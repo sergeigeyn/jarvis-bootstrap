@@ -1,32 +1,29 @@
-// Jarvis Bootstrap — Telegram бот с Claude Code CLI
+// Jarvis Bootstrap — Telegram бот с поддержкой Claude / Codex / Gemini
 import { Bot, InputFile } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { config } from './config.js';
-import { getSession, killSession } from './claude-session.js';
+import { getSession, killSession, getEngineInfo } from './engine.js';
 import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './media.js';
 import { startScheduler } from './scheduler.js';
-import { existsSync, readFileSync } from 'fs';
 
 const bot = new Bot(config.botToken);
+const engineInfo = getEngineInfo(config.engine);
 
-// Auto-retry на rate limits
 bot.api.config.use(autoRetry());
 
 // ── Хелперы ──
 
 function isAdmin(ctx) {
-  if (!config.adminId) return true; // если ADMIN_ID не задан — все юзеры ok
+  if (!config.adminId) return true;
   return ctx.from?.id === config.adminId;
 }
 
 async function sendLong(ctx, text, parseMode = 'HTML') {
-  // Разбиваем длинные сообщения
   const chunks = splitMessage(text, config.messageMaxLen);
   for (const chunk of chunks) {
     try {
       await ctx.reply(chunk, { parse_mode: parseMode });
     } catch {
-      // Если HTML невалидный — отправляем без парсинга
       await ctx.reply(chunk);
     }
   }
@@ -34,73 +31,69 @@ async function sendLong(ctx, text, parseMode = 'HTML') {
 
 function splitMessage(text, maxLen) {
   if (text.length <= maxLen) return [text];
-  
+
   const chunks = [];
   let remaining = text;
-  
+
   while (remaining.length > 0) {
     if (remaining.length <= maxLen) {
       chunks.push(remaining);
       break;
     }
-    
-    // Ищем точку разрыва: двойной перенос, одинарный перенос, пробел
+
     let splitAt = remaining.lastIndexOf('\n\n', maxLen);
     if (splitAt < maxLen * 0.3) splitAt = remaining.lastIndexOf('\n', maxLen);
     if (splitAt < maxLen * 0.3) splitAt = remaining.lastIndexOf(' ', maxLen);
     if (splitAt < maxLen * 0.3) splitAt = maxLen;
-    
+
     chunks.push(remaining.slice(0, splitAt));
     remaining = remaining.slice(splitAt).trimStart();
   }
-  
+
   return chunks;
 }
 
-// ── Обработка ответа Claude (медиа-маркеры + текст) ──
+// ── Обработка ответа (медиа-маркеры + текст) ──
 
-async function handleClaudeResponse(ctx, response) {
+async function handleResponse(ctx, response) {
   const { cleanText, markers } = parseMediaMarkers(response);
-  
-  // Отправляем медиа
+
   for (const marker of markers) {
     await sendMedia(ctx, marker);
   }
-  
-  // Отправляем текст
+
   if (cleanText) {
     await sendLong(ctx, cleanText);
   }
 }
 
-// ── Основной обработчик сообщений ──
+// ── Основной обработчик ──
 
 async function handleMessage(ctx, promptText) {
   if (!isAdmin(ctx)) {
     await ctx.reply('Доступ только для владельца. Настрой ADMIN_ID в .env');
     return;
   }
-  
+
   const session = getSession(ctx.chat.id);
-  
+
   if (session.busy) {
     await ctx.reply('Подожди, обрабатываю предыдущий запрос...');
     return;
   }
-  
-  // typing indicator
+
   const typingInterval = setInterval(() => {
     ctx.replyWithChatAction('typing').catch(() => {});
   }, 4000);
   await ctx.replyWithChatAction('typing').catch(() => {});
-  
+
   session.send(promptText, {
     onDone: async (response) => {
       clearInterval(typingInterval);
       if (response) {
-        await handleClaudeResponse(ctx, response);
+        await handleResponse(ctx, response);
       } else {
-        await ctx.reply('[Пустой ответ от Claude]');
+        await ctx.reply('[Пустой ответ]');
       }
     },
     onError: async (err) => {
@@ -115,7 +108,7 @@ async function handleMessage(ctx, promptText) {
 bot.command('start', async (ctx) => {
   await ctx.reply(
     `Привет! Я ${config.agentName}.\n\n` +
-    `Claude Code CLI агент в Telegram.\n` +
+    `Движок: ${engineInfo.name}\n` +
     `Пиши текстом или отправляй голосовые — я всё пойму.`
   );
 });
@@ -128,6 +121,7 @@ bot.command('reset', async (ctx) => {
 bot.command('status', async (ctx) => {
   const session = getSession(ctx.chat.id);
   await ctx.reply(
+    `Движок: ${engineInfo.name}\n` +
     `Сессия: ${session.busy ? 'занята' : 'свободна'}\n` +
     `Последняя активность: ${new Date(session.lastActivity).toLocaleTimeString()}`
   );
@@ -137,7 +131,7 @@ bot.command('status', async (ctx) => {
 
 bot.on('message:text', async (ctx) => {
   const text = ctx.message.text;
-  if (text.startsWith('/')) return; // неизвестные команды игнорим
+  if (text.startsWith('/')) return;
   await handleMessage(ctx, text);
 });
 
@@ -148,11 +142,7 @@ bot.on('message:voice', async (ctx) => {
   try {
     const filepath = await downloadFile(bot, fileId, '.ogg');
     const transcript = await transcribeVoice(filepath);
-    
-    // Показываем транскрипт
     await ctx.reply(`🎤 <i>${transcript}</i>`, { parse_mode: 'HTML' });
-    
-    // Отправляем в Claude
     await handleMessage(ctx, transcript);
   } catch (err) {
     await ctx.reply(`Ошибка обработки голосового: ${err.message}`);
@@ -163,17 +153,15 @@ bot.on('message:voice', async (ctx) => {
 
 bot.on('message:photo', async (ctx) => {
   const photo = ctx.message.photo;
-  const largest = photo[photo.length - 1]; // самое большое разрешение
+  const largest = photo[photo.length - 1];
   try {
     const filepath = await downloadFile(bot, largest.file_id, '.jpg');
     const caption = ctx.message.caption || 'Что на этом фото?';
-    
-    // Claude Code CLI не принимает изображения напрямую через --print
-    // Передаём как контекст
+
     const prompt = `Пользователь отправил фото: ${filepath}\n` +
       `Подпись: ${caption}\n` +
       `Используй Read tool чтобы посмотреть изображение.`;
-    
+
     await handleMessage(ctx, prompt);
   } catch (err) {
     await ctx.reply(`Ошибка обработки фото: ${err.message}`);
@@ -188,12 +176,12 @@ bot.on('message:document', async (ctx) => {
   try {
     const filepath = await downloadFile(bot, doc.file_id, ext);
     const caption = ctx.message.caption || `Файл: ${doc.file_name || 'unknown'}`;
-    
+
     const prompt = `Пользователь отправил файл: ${filepath}\n` +
       `Имя: ${doc.file_name || 'unknown'}\n` +
       `Подпись: ${caption}\n` +
       `Прочитай файл и ответь.`;
-    
+
     await handleMessage(ctx, prompt);
   } catch (err) {
     await ctx.reply(`Ошибка обработки файла: ${err.message}`);
@@ -202,21 +190,18 @@ bot.on('message:document', async (ctx) => {
 
 // ── Запуск ──
 
-console.log(`[bot] starting ${config.agentName}...`);
+console.log(`[bot] starting ${config.agentName} (engine: ${engineInfo.name})...`);
 startScheduler(bot);
 
 bot.start({
   onStart: () => {
-    console.log(`[bot] ${config.agentName} is running!`);
-    
-    // Уведомление админа о старте
+    console.log(`[bot] ${config.agentName} is running! Engine: ${engineInfo.name}`);
     if (config.adminId) {
-      bot.api.sendMessage(config.adminId, `${config.agentName} запущен и готов к работе.`).catch(() => {});
+      bot.api.sendMessage(config.adminId, `${config.agentName} запущен.\nДвижок: ${engineInfo.name}`).catch(() => {});
     }
   },
 });
 
-// Graceful shutdown
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     console.log(`[bot] ${sig} received, shutting down...`);

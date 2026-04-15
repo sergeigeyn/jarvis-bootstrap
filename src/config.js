@@ -20,29 +20,41 @@ if (existsSync(envPath)) {
   }
 }
 
+// Определяем движок и ключ
+const engine = (process.env.ENGINE || 'claude').toLowerCase();
+const ENGINE_KEY_MAP = {
+  claude: 'ANTHROPIC_API_KEY',
+  codex: 'OPENAI_API_KEY',
+  gemini: 'GOOGLE_API_KEY',
+};
+const keyEnv = ENGINE_KEY_MAP[engine] || ENGINE_KEY_MAP.claude;
+
 export const config = {
+  // Движок
+  engine,
+  engineKey: process.env[keyEnv],
+
   // Обязательные
   botToken: process.env.BOT_TOKEN,
-  anthropicKey: process.env.ANTHROPIC_API_KEY,
-  
+
   // Опциональные
   adminId: process.env.ADMIN_ID ? Number(process.env.ADMIN_ID) : null,
   agentName: process.env.AGENT_NAME || 'Джарвис',
   deepgramKey: process.env.DEEPGRAM_API_KEY,
-  
+
   // Пути
   home: HOME,
   dataDir: DATA_DIR,
   workspaceDir: join(HOME, 'workspace'),
   projectsDir: join(HOME, 'projects'),
   schedulesPath: join(DATA_DIR, 'schedules.json'),
-  
+
   // Лимиты
   messageMaxLen: 4000,
-  sessionTimeoutMs: 10 * 60 * 1000, // 10 мин без активности — убить сессию
+  sessionTimeoutMs: 10 * 60 * 1000,
   maxConcurrentSessions: 3,
 };
 
 // Валидация
 if (!config.botToken) throw new Error('BOT_TOKEN is required. Set it in ~/.jarvis/.env');
-if (!config.anthropicKey) throw new Error('ANTHROPIC_API_KEY is required. Set it in ~/.jarvis/.env');
+if (!config.engineKey) throw new Error(`${keyEnv} is required for engine "${engine}". Set it in ~/.jarvis/.env`);
