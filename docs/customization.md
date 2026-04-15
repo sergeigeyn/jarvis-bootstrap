@@ -67,10 +67,13 @@ RED: правка файлов, git, shell, деплой
 
 ### Память
 
-Система памяти — ключевая фича. Настраивается в CLAUDE.md:
-- `~/workspace/MEMORY.md` — долгосрочная память (факты, предпочтения)
-- `~/workspace/memory/YYYY-MM-DD.md` — дневник (что делали сегодня)
-- `~/workspace/knowledge/` — база знаний (архитектура, решения)
+Система памяти — три уровня:
+- `~/workspace/MEMORY.md` — долгосрочная (факты, предпочтения, проекты)
+- `~/workspace/memory/YYYY-MM-DD.md` — дневник (хронология, задачи дня)
+- `~/workspace/knowledge/` — база знаний (архитектура, решения, конфиги)
+
+Агент сам решает, что сохранять. Память эволюционирует: устаревшее архивируется,
+важное укрепляется, дубли убираются.
 
 ### Формат ответов
 
@@ -83,9 +86,83 @@ RED: правка файлов, git, shell, деплой
 
 ---
 
+## Безопасность (hooks.js)
+
+### Код-гейты
+
+В отличие от промптов, хуки — это код. 100% гарантия блокировки.
+
+Встроенные правила (активны по умолчанию):
+
+**Деструктивные команды** — блокируются до подтверждения:
+```
+rm -rf, rmdir, sudo rm
+DROP TABLE, TRUNCATE, DELETE FROM
+git push --force, reset --hard, branch -D, clean -f
+kill -9, pkill, shutdown, reboot
+```
+
+**Секреты в ответах** — маскируются автоматически:
+```
+sk-ant-api...  → sk-ant-***
+ghp_xxxx...    → ghp_***
+Bearer eyJ...  → Bearer ***
+```
+
+### Пользовательские хуки
+
+Добавь свои правила в `~/.jarvis/hooks.json`:
+
+```json
+{
+  "block": [
+    { "pattern": "npm publish", "reason": "Публикация пакетов запрещена" },
+    { "pattern": "docker rm", "reason": "Удаление контейнеров требует подтверждения" }
+  ],
+  "mask": [
+    { "pattern": "PRIVATE_KEY_\\w+", "replace": "PRIVATE_KEY_***" }
+  ]
+}
+```
+
+---
+
+## Уровень доверия (trust.js)
+
+Агент «взрослеет» с опытом. В начале переспрашивает всё, через месяц — только критичное.
+
+### Уровни
+
+| Уровень | Условие | GREEN | YELLOW | RED |
+|---|---|---|---|---|
+| 0 — новичок | 0-10 сессий | auto | confirm | confirm |
+| 1 — знакомый | 11-50 сессий | auto | auto+notify | confirm |
+| 2 — доверенный | 51+ сессий | auto | auto | confirm (только критичные) |
+
+### Ручная настройка
+
+В `.env`:
+```bash
+TRUST_LEVEL=2  # Сразу максимальная автономия
+```
+
+Или не указывай — система сама определит по количеству сессий.
+
+Файл `~/.jarvis/trust.json`:
+```json
+{
+  "sessions": 42,
+  "level": 1,
+  "firstSeen": "2026-04-15",
+  "overridden": false
+}
+```
+
+---
+
 ## Навыки (Skills)
 
-Навыки — markdown-файлы которые Claude Code загружает автоматически.
+Навыки — markdown-файлы которые CLI-агент загружает автоматически.
 
 ### Структура навыка
 
@@ -181,16 +258,20 @@ EOF
 
 ## Переменные окружения
 
-Добавляй в `~/.jarvis/.env`:
+В `~/.jarvis/.env`:
 
 | Переменная | Обязательна | Описание |
 |---|---|---|
+| ENGINE | Нет | Движок: claude / codex / gemini (дефолт: claude) |
 | BOT_TOKEN | Да | Telegram Bot Token от @BotFather |
-| ANTHROPIC_API_KEY | Да | Ключ Anthropic API |
+| ANTHROPIC_API_KEY | Да* | Ключ Anthropic (* зависит от ENGINE) |
+| OPENAI_API_KEY | Да* | Ключ OpenAI (* для engine=codex) |
+| GOOGLE_API_KEY | Да* | Ключ Google (* для engine=gemini) |
 | AGENT_NAME | Нет | Имя агента (дефолт: Джарвис) |
 | ADMIN_ID | Нет | Telegram ID владельца |
+| TRUST_LEVEL | Нет | Ручной trust level: 0, 1, 2 |
 | DEEPGRAM_API_KEY | Нет | Для транскрипции голосовых |
 | GITHUB_TOKEN | Нет | Для работы с GitHub |
 | SERPER_API_KEY | Нет | Для веб-поиска |
 
-Любые дополнительные переменные из .env будут доступны Claude Code через shell.
+Любые дополнительные переменные из `.env` будут доступны CLI-агенту через shell.

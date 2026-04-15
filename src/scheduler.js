@@ -1,7 +1,7 @@
 // Система таймеров/расписаний
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { config } from './config.js';
-import { getSession } from './claude-session.js';
+import { getSession } from './engine.js';
 
 let schedules = [];
 let timers = new Map();

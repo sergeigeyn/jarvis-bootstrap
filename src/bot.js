@@ -4,6 +4,8 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import { config } from './config.js';
 import { getSession, killSession, getEngineInfo } from './engine.js';
 import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './media.js';
+import { processResponse } from './hooks.js';
+import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
 import { startScheduler } from './scheduler.js';
 
 const bot = new Bot(config.botToken);
@@ -53,10 +55,13 @@ function splitMessage(text, maxLen) {
   return chunks;
 }
 
-// ── Обработка ответа (медиа-маркеры + текст) ──
+// ── Обработка ответа (hooks → медиа-маркеры → текст) ──
 
 async function handleResponse(ctx, response) {
-  const { cleanText, markers } = parseMediaMarkers(response);
+  // Пропускаем через hooks — маскируем секреты
+  const safe = processResponse(response);
+
+  const { cleanText, markers } = parseMediaMarkers(safe);
 
   for (const marker of markers) {
     await sendMedia(ctx, marker);
@@ -81,6 +86,9 @@ async function handleMessage(ctx, promptText) {
     await ctx.reply('Подожди, обрабатываю предыдущий запрос...');
     return;
   }
+
+  // Записываем сессию для trust level
+  recordSession();
 
   const typingInterval = setInterval(() => {
     ctx.replyWithChatAction('typing').catch(() => {});
@@ -120,9 +128,11 @@ bot.command('reset', async (ctx) => {
 
 bot.command('status', async (ctx) => {
   const session = getSession(ctx.chat.id);
+  const trust = getTrustState();
   await ctx.reply(
     `Движок: ${engineInfo.name}\n` +
     `Сессия: ${session.busy ? 'занята' : 'свободна'}\n` +
+    `Trust: ${trust.level} — ${getTrustName()} (${trust.sessions} сессий)\n` +
     `Последняя активность: ${new Date(session.lastActivity).toLocaleTimeString()}`
   );
 });
@@ -197,7 +207,7 @@ bot.start({
   onStart: () => {
     console.log(`[bot] ${config.agentName} is running! Engine: ${engineInfo.name}`);
     if (config.adminId) {
-      bot.api.sendMessage(config.adminId, `${config.agentName} запущен.\nДвижок: ${engineInfo.name}`).catch(() => {});
+      bot.api.sendMessage(config.adminId, `${config.agentName} запущен.\nДвижок: ${engineInfo.name}\nTrust: ${getTrustName()}`).catch(() => {});
     }
   },
 });

@@ -1,6 +1,7 @@
 # Jarvis Bootstrap
 
 AI-агент в Telegram с тремя движками на выбор. Настраиваемая личность, память, навыки, расписания.
+Код-гейты безопасности, динамический trust level, эволюция через фазы.
 
 > **Автоматический деплой через Telegram?** Используй [jarvis-installer](https://github.com/sergeigeyn/jarvis-installer) — wizard-бот, который создаёт VPS и ставит агента за 5-15 минут.
 
@@ -69,12 +70,13 @@ node src/bot.js
                      ┌──────┴──────┐          ┌──────┴──────┐
                      │  engine.js  │          │  workspace/  │
                      │  media.js   │          │  SOUL.md     │
-                     │  scheduler  │          │  CLAUDE.md   │
-                     └─────────────┘          │  skills/     │
-                                              └─────────────┘
+                     │  hooks.js   │          │  CLAUDE.md   │
+                     │  trust.js   │          │  skills/     │
+                     │  scheduler  │          │  knowledge/  │
+                     └─────────────┘          └─────────────┘
 ```
 
-Бот принимает текст/голос/фото/файлы → вызывает CLI-агент → парсит ответ (медиа-маркеры) → отправляет в Telegram.
+Бот принимает текст/голос/фото/файлы → вызывает CLI-агент → **hooks проверяют ответ** → парсит медиа-маркеры → отправляет в Telegram.
 
 ## Структура проекта
 
@@ -85,6 +87,8 @@ jarvis-bootstrap/
 │   ├── config.js       # Конфигурация и .env
 │   ├── engine.js       # Абстракция: Claude / Codex / Gemini
 │   ├── media.js        # Медиа: Deepgram, маркеры [ФОТО:], [ФАЙЛ:]
+│   ├── hooks.js        # Код-гейты: блок деструктивных команд, маскировка секретов
+│   ├── trust.js        # Динамический trust level (0→1→2)
 │   └── scheduler.js    # Расписания (daily/weekly/once)
 ├── templates/
 │   ├── workspace/      # SOUL.md, CLAUDE.md, MEMORY.md
@@ -92,29 +96,58 @@ jarvis-bootstrap/
 ├── scripts/
 │   └── bootstrap.sh    # Автоустановка на VPS
 └── docs/
-    ├── architecture.md
-    ├── customization.md
+    ├── architecture.md # Слои, потоки, безопасность, эволюция
+    ├── customization.md # SOUL, CLAUDE, hooks, trust, навыки, расписания
     └── troubleshooting.md
 ```
 
 ## Структура на сервере
 
 ```
-~/.jarvis/.env          # ENGINE + ключи (chmod 600)
-~/.jarvis/schedules.json
-~/workspace/SOUL.md     # Личность
-~/workspace/CLAUDE.md   # Правила
-~/workspace/MEMORY.md   # Память
-~/workspace/memory/     # Дневники
-~/workspace/knowledge/  # База знаний
-~/workspace/.claude/skills/  # Навыки
-~/projects/             # Рабочие проекты
+~/.jarvis/
+├── .env              # ENGINE + ключи (chmod 600)
+├── schedules.json    # Расписания
+├── hooks.json        # Пользовательские хуки (опционально)
+└── trust.json        # Счётчик сессий и trust level
+
+~/workspace/
+├── SOUL.md           # Личность (кто)
+├── CLAUDE.md         # Правила (как)
+├── MEMORY.md         # Память (что знает)
+├── memory/           # Дневники
+├── knowledge/        # База знаний
+└── .claude/skills/   # Навыки
+
+~/projects/           # Рабочие проекты
 ```
+
+## Безопасность
+
+Два эшелона:
+
+| Эшелон | Механизм | Гарантия |
+|---|---|---|
+| **hooks.js** (код) | Блокировка `rm -rf`, `DROP`, `push --force`; маскировка секретов | 100% |
+| **CLAUDE.md** (промпт) | GREEN/YELLOW/RED уровни автономности | ~70% |
+
+Принцип: всё критичное — в коде. Промпт — подстраховка.
+
+## Trust Level
+
+Агент «взрослеет» с количеством сессий:
+
+| Уровень | Сессий | Поведение |
+|---|---|---|
+| 0 — новичок | 0-10 | Подтверждает YELLOW и RED |
+| 1 — знакомый | 11-50 | Подтверждает только RED |
+| 2 — доверенный | 51+ | Подтверждает только критичные RED |
+
+Можно задать вручную: `TRUST_LEVEL=2` в `.env`.
 
 ## Документация
 
-- [Архитектура](docs/architecture.md) — движки, модули, потоки данных, безопасность
-- [Кастомизация](docs/customization.md) — личность, правила, навыки, расписания, переменные
+- [Архитектура](docs/architecture.md) — слои, движки, потоки, безопасность, эволюция
+- [Кастомизация](docs/customization.md) — личность, правила, хуки, trust, навыки, расписания
 - [Troubleshooting](docs/troubleshooting.md) — решение типичных проблем
 
 ## Управление
@@ -135,12 +168,26 @@ OPENAI_API_KEY=sk-...
 sudo systemctl restart jarvis-bot
 ```
 
+## Roadmap
+
+- [x] Multi-engine (Claude / Codex / Gemini)
+- [x] Telegram installer bot (Timeweb Cloud)
+- [ ] Код-гейты безопасности (hooks.js)
+- [ ] Динамический trust level
+- [ ] Changelog в боте (уведомления об обновлениях)
+- [ ] Проактивный режим (утренние/вечерние сканы)
+- [ ] Авто-извлечение навыков из паттернов
+- [ ] Оплата (ЮKassa, Stripe)
+- [ ] Дополнительные VPS-провайдеры (Hetzner, Aéza)
+- [ ] Fleet management (мониторинг/обновление развёрнутых агентов)
+- [ ] Мульти-агенты, A2A протокол
+
 ## Связанные проекты
 
 | Проект | Описание |
 |---|---|
 | [jarvis-bootstrap](https://github.com/sergeigeyn/jarvis-bootstrap) | Сам агент (этот репо) |
-| [jarvis-installer](https://github.com/sergeigeyn/jarvis-installer) | Бот для автоматического деплоя через Telegram |
+| [jarvis-installer](https://github.com/sergeigeyn/jarvis-installer) | Бот для деплоя через Telegram |
 
 ## Требования
 
