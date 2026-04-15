@@ -18,7 +18,7 @@ Telegram-бот, который:
 
 ```bash
 # На чистом Ubuntu 24.04 VPS, от root:
-git clone https://github.com/OWNER/jarvis-bootstrap.git /tmp/jb
+git clone https://github.com/sergeigeyn/jarvis-bootstrap.git /tmp/jb
 sudo bash /tmp/jb/scripts/bootstrap.sh
 ```
 
@@ -39,7 +39,7 @@ sudo apt install -y nodejs
 npm install -g @anthropic-ai/claude-code
 
 # Бот
-git clone https://github.com/OWNER/jarvis-bootstrap.git
+git clone https://github.com/sergeigeyn/jarvis-bootstrap.git
 cd jarvis-bootstrap && npm install
 
 # Конфиг

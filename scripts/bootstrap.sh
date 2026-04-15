@@ -21,7 +21,7 @@ JARVIS_HOME="/home/$JARVIS_USER"
 DATA_DIR="$JARVIS_HOME/.jarvis"
 WORKSPACE_DIR="$JARVIS_HOME/workspace"
 PROJECTS_DIR="$JARVIS_HOME/projects"
-REPO_URL="https://github.com/OWNER/jarvis-bootstrap.git"  # ← заменить на свой
+REPO_URL="https://github.com/sergeigeyn/jarvis-bootstrap.git"  # ← заменить на свой
 
 # ─── Проверки ───
 
