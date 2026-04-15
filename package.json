@@ -1,0 +1,18 @@
+{
+  "name": "jarvis-bootstrap",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Self-deploying AI agent — Telegram bot powered by Claude Code CLI",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "dependencies": {
+    "grammy": "^1.41.1",
+    "@grammyjs/auto-retry": "^2.0.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
