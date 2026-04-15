@@ -1,6 +1,8 @@
 # Jarvis Bootstrap
 
-Самодеплоящийся AI-агент в Telegram. Три движка на выбор: Claude Code, OpenAI Codex, Gemini CLI.
+AI-агент в Telegram с тремя движками на выбор. Настраиваемая личность, память, навыки, расписания.
+
+> **Автоматический деплой через Telegram?** Используй [jarvis-installer](https://github.com/sergeigeyn/jarvis-installer) — wizard-бот, который создаёт VPS и ставит агента за 5-15 минут.
 
 ## Движки
 
@@ -10,42 +12,40 @@
 | 💲 | OpenAI Codex | $20/мес (ChatGPT Plus) | Отличное |
 | ⭐ | Claude Code | $100/мес (Claude Max) | Лучшее |
 
-Все три движка работают с одними и теми же промптами, навыками и памятью.
+Все три движка работают с одними промптами, навыками и памятью. Переключение — одна строка в `.env`.
 
-## Быстрый старт
+## Установка
 
-### Автоустановка (1 команда на VPS)
+### Вариант 1: Через Telegram (рекомендуется)
+
+Используй [@JarvisInstallerBot](https://github.com/sergeigeyn/jarvis-installer) — пошаговый wizard:
+1. Выбери движок
+2. Кинь API-токен VPS-провайдера (Timeweb Cloud)
+3. Кинь Bot Token от @BotFather
+4. Кинь API Key движка
+5. Готово — агент в Telegram через 5-15 минут
+
+### Вариант 2: Скрипт на VPS
 
 ```bash
 git clone https://github.com/sergeigeyn/jarvis-bootstrap.git /tmp/jb
 sudo bash /tmp/jb/scripts/bootstrap.sh
 ```
 
-Скрипт спросит:
-1. **Движок** — Gemini (бесплатно) / Codex ($20) / Claude ($100)
-2. **API Key** — ключ выбранного движка
-3. **Bot Token** — от @BotFather
-4. **Имя агента** и **твоё имя**
-5. **Telegram ID** (опционально)
-6. **Deepgram Key** (опционально, для голосовых)
-
-### Ручная установка
+### Вариант 3: Ручная установка
 
 ```bash
-# Node.js 22 + CLI
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
 sudo apt install -y nodejs
 
-# Выбери один из движков:
+# Один из движков:
 npm install -g @anthropic-ai/claude-code  # Claude
 npm install -g @openai/codex              # Codex
 npm install -g @google/gemini-cli         # Gemini
 
-# Бот
 git clone https://github.com/sergeigeyn/jarvis-bootstrap.git
 cd jarvis-bootstrap && npm install
 
-# Конфиг
 mkdir -p ~/.jarvis
 cat > ~/.jarvis/.env << EOF
 ENGINE=claude
@@ -58,6 +58,24 @@ EOF
 node src/bot.js
 ```
 
+## Как это работает
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Telegram   │────▶│   bot.js         │────▶│  AI Engine      │
+│   (grammy)   │◀────│   (Node.js)      │◀────│  CLI            │
+└──────────────┘     └──────────────────┘     └─────────────────┘
+                            │                        │
+                     ┌──────┴──────┐          ┌──────┴──────┐
+                     │  engine.js  │          │  workspace/  │
+                     │  media.js   │          │  SOUL.md     │
+                     │  scheduler  │          │  CLAUDE.md   │
+                     └─────────────┘          │  skills/     │
+                                              └─────────────┘
+```
+
+Бот принимает текст/голос/фото/файлы → вызывает CLI-агент → парсит ответ (медиа-маркеры) → отправляет в Telegram.
+
 ## Структура проекта
 
 ```
@@ -65,9 +83,9 @@ jarvis-bootstrap/
 ├── src/
 │   ├── bot.js          # Telegram бот (grammy)
 │   ├── config.js       # Конфигурация и .env
-│   ├── engine.js       # Абстракция движков (Claude/Codex/Gemini)
-│   ├── media.js        # Медиа: скачивание, транскрипция, маркеры
-│   └── scheduler.js    # Таймеры и расписания
+│   ├── engine.js       # Абстракция: Claude / Codex / Gemini
+│   ├── media.js        # Медиа: Deepgram, маркеры [ФОТО:], [ФАЙЛ:]
+│   └── scheduler.js    # Расписания (daily/weekly/once)
 ├── templates/
 │   ├── workspace/      # SOUL.md, CLAUDE.md, MEMORY.md
 │   └── skills/         # 5 встроенных навыков
@@ -82,25 +100,22 @@ jarvis-bootstrap/
 ## Структура на сервере
 
 ```
-~/
-├── .jarvis/
-│   ├── .env              # ENGINE + ключи (chmod 600)
-│   └── schedules.json    # Расписания
-├── workspace/
-│   ├── SOUL.md           # Личность агента
-│   ├── CLAUDE.md         # Правила работы
-│   ├── MEMORY.md         # Долгосрочная память
-│   ├── memory/           # Дневники
-│   ├── knowledge/        # База знаний
-│   └── .claude/skills/   # Навыки
-└── projects/             # Рабочие проекты
+~/.jarvis/.env          # ENGINE + ключи (chmod 600)
+~/.jarvis/schedules.json
+~/workspace/SOUL.md     # Личность
+~/workspace/CLAUDE.md   # Правила
+~/workspace/MEMORY.md   # Память
+~/workspace/memory/     # Дневники
+~/workspace/knowledge/  # База знаний
+~/workspace/.claude/skills/  # Навыки
+~/projects/             # Рабочие проекты
 ```
 
 ## Документация
 
-- **[Архитектура](docs/architecture.md)** — движки, модули, потоки данных
-- **[Кастомизация](docs/customization.md)** — личность, правила, навыки, расписания
-- **[Troubleshooting](docs/troubleshooting.md)** — решение проблем
+- [Архитектура](docs/architecture.md) — движки, модули, потоки данных, безопасность
+- [Кастомизация](docs/customization.md) — личность, правила, навыки, расписания, переменные
+- [Troubleshooting](docs/troubleshooting.md) — решение типичных проблем
 
 ## Управление
 
@@ -113,12 +128,19 @@ sudo systemctl restart jarvis-bot     # перезапуск
 ## Смена движка
 
 ```bash
-# Отредактируй ~/.jarvis/.env:
+# ~/.jarvis/.env:
 ENGINE=codex
 OPENAI_API_KEY=sk-...
 
 sudo systemctl restart jarvis-bot
 ```
+
+## Связанные проекты
+
+| Проект | Описание |
+|---|---|
+| [jarvis-bootstrap](https://github.com/sergeigeyn/jarvis-bootstrap) | Сам агент (этот репо) |
+| [jarvis-installer](https://github.com/sergeigeyn/jarvis-installer) | Бот для автоматического деплоя через Telegram |
 
 ## Требования
 
