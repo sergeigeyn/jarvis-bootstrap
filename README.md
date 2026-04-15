@@ -172,8 +172,8 @@ sudo systemctl restart jarvis-bot
 
 - [x] Multi-engine (Claude / Codex / Gemini)
 - [x] Telegram installer bot (Timeweb Cloud)
-- [ ] Код-гейты безопасности (hooks.js)
-- [ ] Динамический trust level
+- [x] Код-гейты безопасности (hooks.js) — протестировано 16/16
+- [x] Динамический trust level — протестировано 16/16
 - [ ] Changelog в боте (уведомления об обновлениях)
 - [ ] Проактивный режим (утренние/вечерние сканы)
 - [ ] Авто-извлечение навыков из паттернов
