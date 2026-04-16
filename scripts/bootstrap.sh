@@ -104,16 +104,53 @@ log "Начинаю установку ($ENGINE_NAME)..."
 
 # ─── 3. Системные пакеты ───
 
+# Detect distro family
+if command -v apt-get &>/dev/null; then
+  PKG_MGR="apt"
+elif command -v dnf &>/dev/null; then
+  PKG_MGR="dnf"
+elif command -v yum &>/dev/null; then
+  PKG_MGR="yum"
+elif command -v apk &>/dev/null; then
+  PKG_MGR="apk"
+else
+  err "Неизвестный пакетный менеджер. Поддерживаются: apt, dnf, yum, apk"
+  exit 1
+fi
+log "Пакетный менеджер: $PKG_MGR"
+
 log "Обновляю пакеты..."
-apt-get update -qq
-apt-get install -y -qq git curl wget build-essential
+case "$PKG_MGR" in
+  apt)
+    apt-get update -qq
+    apt-get install -y -qq git curl wget build-essential
+    ;;
+  dnf|yum)
+    $PKG_MGR install -y git curl wget gcc gcc-c++ make
+    ;;
+  apk)
+    apk update
+    apk add git curl wget build-base bash
+    ;;
+esac
 
 # ─── 4. Node.js 22 ───
 
 if ! command -v node &>/dev/null || [ "$(node -v | cut -d. -f1 | tr -d v)" -lt 22 ]; then
   log "Устанавливаю Node.js 22..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y -qq nodejs
+  case "$PKG_MGR" in
+    apt)
+      curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      apt-get install -y -qq nodejs
+      ;;
+    dnf|yum)
+      curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+      $PKG_MGR install -y nodejs
+      ;;
+    apk)
+      apk add nodejs npm
+      ;;
+  esac
 fi
 log "Node.js $(node -v)"
 
