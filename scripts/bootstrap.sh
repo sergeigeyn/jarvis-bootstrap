@@ -36,47 +36,65 @@ echo "║     Jarvis Bootstrap Installer       ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
-# ─── 1. Выбор движка ───
+# ─── Non-interactive режим ───
+# Если ENGINE и BOT_TOKEN уже заданы через env — пропускаем промпты
 
-echo -e "${CYAN}Выбери AI-движок:${NC}"
-echo ""
-echo "  1) 🆓 Gemini CLI   — бесплатно (Google аккаунт, 1000 req/день)"
-echo "  2) 💲 Codex CLI     — ChatGPT Plus подписка (\$20/мес)"
-echo "  3) ⭐ Claude Code   — Claude Max подписка (\$100/мес)"
-echo ""
-ask "Номер [3]:"
-read -r ENGINE_CHOICE
-case "${ENGINE_CHOICE:-3}" in
-  1) ENGINE="gemini"; ENGINE_NAME="Gemini CLI"; KEY_NAME="GOOGLE_API_KEY"; KEY_HINT="Google AI API Key";;
-  2) ENGINE="codex"; ENGINE_NAME="OpenAI Codex"; KEY_NAME="OPENAI_API_KEY"; KEY_HINT="OpenAI API Key";;
-  *) ENGINE="claude"; ENGINE_NAME="Claude Code"; KEY_NAME="ANTHROPIC_API_KEY"; KEY_HINT="Anthropic API Key (sk-ant-...)";;
-esac
-log "Движок: $ENGINE_NAME"
+if [ -n "${ENGINE:-}" ] && [ -n "${BOT_TOKEN:-}" ]; then
+  # Non-interactive: все данные из env vars
+  case "$ENGINE" in
+    gemini) ENGINE_NAME="Gemini CLI"; KEY_NAME="GEMINI_API_KEY";;
+    codex)  ENGINE_NAME="OpenAI Codex"; KEY_NAME="OPENAI_API_KEY";;
+    *)      ENGINE="claude"; ENGINE_NAME="Claude Code"; KEY_NAME="ANTHROPIC_API_KEY";;
+  esac
+  ENGINE_KEY="${ENGINE_KEY:-${!KEY_NAME:-}}"
+  AGENT_NAME="${AGENT_NAME:-Джарвис}"
+  OWNER_NAME="${OWNER_NAME:-Владелец}"
+  ADMIN_ID="${ADMIN_ID:-}"
+  DEEPGRAM_KEY="${DEEPGRAM_KEY:-}"
+  log "Non-interactive: $ENGINE_NAME"
+else
+  # ─── 1. Выбор движка (интерактивный) ───
 
-# ─── 2. Сбор данных ───
+  echo -e "${CYAN}Выбери AI-движок:${NC}"
+  echo ""
+  echo "  1) 🆓 Gemini CLI   — бесплатно (Google аккаунт, 1000 req/день)"
+  echo "  2) 💲 Codex CLI     — ChatGPT Plus подписка (\$20/мес)"
+  echo "  3) ⭐ Claude Code   — Claude Max подписка (\$100/мес)"
+  echo ""
+  ask "Номер [3]:"
+  read -r ENGINE_CHOICE
+  case "${ENGINE_CHOICE:-3}" in
+    1) ENGINE="gemini"; ENGINE_NAME="Gemini CLI"; KEY_NAME="GEMINI_API_KEY"; KEY_HINT="Gemini API Key";;
+    2) ENGINE="codex"; ENGINE_NAME="OpenAI Codex"; KEY_NAME="OPENAI_API_KEY"; KEY_HINT="OpenAI API Key";;
+    *) ENGINE="claude"; ENGINE_NAME="Claude Code"; KEY_NAME="ANTHROPIC_API_KEY"; KEY_HINT="Anthropic API Key (sk-ant-...)";;
+  esac
+  log "Движок: $ENGINE_NAME"
 
-echo ""
-ask "Telegram Bot Token (от @BotFather):"
-read -r BOT_TOKEN
-[ -z "$BOT_TOKEN" ] && { err "BOT_TOKEN обязателен"; exit 1; }
+  # ─── 2. Сбор данных ───
 
-ask "$KEY_HINT:"
-read -r ENGINE_KEY
-[ -z "$ENGINE_KEY" ] && { err "$KEY_NAME обязателен"; exit 1; }
+  echo ""
+  ask "Telegram Bot Token (от @BotFather):"
+  read -r BOT_TOKEN
+  [ -z "$BOT_TOKEN" ] && { err "BOT_TOKEN обязателен"; exit 1; }
 
-ask "Имя агента [Джарвис]:"
-read -r AGENT_NAME
-AGENT_NAME="${AGENT_NAME:-Джарвис}"
+  ask "$KEY_HINT:"
+  read -r ENGINE_KEY
+  [ -z "$ENGINE_KEY" ] && { err "$KEY_NAME обязателен"; exit 1; }
 
-ask "Твоё имя [Сергей]:"
-read -r OWNER_NAME
-OWNER_NAME="${OWNER_NAME:-Сергей}"
+  ask "Имя агента [Джарвис]:"
+  read -r AGENT_NAME
+  AGENT_NAME="${AGENT_NAME:-Джарвис}"
 
-ask "Telegram ID владельца (можно пропустить):"
-read -r ADMIN_ID
+  ask "Твоё имя [Сергей]:"
+  read -r OWNER_NAME
+  OWNER_NAME="${OWNER_NAME:-Сергей}"
 
-ask "Deepgram API Key для голосовых (можно пропустить):"
-read -r DEEPGRAM_KEY
+  ask "Telegram ID владельца (можно пропустить):"
+  read -r ADMIN_ID
+
+  ask "Deepgram API Key для голосовых (можно пропустить):"
+  read -r DEEPGRAM_KEY
+fi
 
 echo ""
 log "Начинаю установку ($ENGINE_NAME)..."
@@ -117,8 +135,7 @@ install_engine() {
     gemini)
       if ! command -v gemini &>/dev/null; then
         log "Устанавливаю Gemini CLI..."
-        npm install -g @anthropic-ai/claude-code  # TODO: реальный пакет gemini
-        warn "Gemini CLI может потребовать дополнительной настройки"
+        npm install -g @anthropic-ai/claude-code @google/gemini-cli
       fi
       log "Gemini CLI installed"
       ;;
