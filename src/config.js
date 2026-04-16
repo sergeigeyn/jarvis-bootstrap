@@ -25,7 +25,7 @@ const engine = (process.env.ENGINE || 'claude').toLowerCase();
 const ENGINE_KEY_MAP = {
   claude: 'ANTHROPIC_API_KEY',
   codex: 'OPENAI_API_KEY',
-  gemini: 'GOOGLE_API_KEY',
+  gemini: 'GEMINI_API_KEY',
 };
 const keyEnv = ENGINE_KEY_MAP[engine] || ENGINE_KEY_MAP.claude;
 
