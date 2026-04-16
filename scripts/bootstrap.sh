@@ -296,11 +296,19 @@ systemctl start jarvis-bot
 
 # ─── 14. Проверка ───
 
-sleep 3
+sleep 5
 if systemctl is-active --quiet jarvis-bot; then
   log "Бот запущен!"
 else
-  err "Бот не запустился. Логи: journalctl -u jarvis-bot -n 50"
+  err "Бот не запустился. Диагностика:"
+  echo "--- journalctl ---" >&2
+  journalctl -u jarvis-bot -n 30 --no-pager 2>&1 >&2 || true
+  echo "--- .env check ---" >&2
+  [ -f "$DATA_DIR/.env" ] && echo ".env exists ($(wc -l < "$DATA_DIR/.env") lines)" >&2 || echo ".env MISSING" >&2
+  echo "--- node check ---" >&2
+  node -v 2>&1 >&2 || echo "node not found" >&2
+  echo "--- service file ---" >&2
+  cat /etc/systemd/system/jarvis-bot.service >&2 || true
   exit 1
 fi
 
