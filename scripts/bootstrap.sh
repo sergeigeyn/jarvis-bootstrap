@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# SSH non-login shells have minimal PATH — ensure standard dirs are included
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 # ─── Jarvis Bootstrap ───
 # Автоматическое развёртывание AI-агента на чистом Ubuntu VPS
 
