@@ -16,6 +16,8 @@ import {
   buildSettingsKeyboard, getSettingsText, handleSettingsCallback,
   getWaitingInput, clearWaitingInput, handleSettingsInput,
 } from './settings.js';
+import { buildMainMenuKeyboard, getMainMenuText, getReturningMenuText } from './menu.js';
+import { buildProjectsKeyboard, getProjectsText, handleProjectsCallback } from './projects.js';
 
 const bot = new Bot(config.botToken);
 const engineInfo = getEngineInfo(config.engine);
@@ -153,8 +155,11 @@ bot.command('start', async (ctx) => {
   }
 
   if (isOnboarded()) {
-    // Уже знакомы — короткое приветствие
-    await ctx.reply(getReturningMessage(), { parse_mode: 'HTML' });
+    // Уже знакомы — меню с кнопками
+    await ctx.reply(getReturningMenuText(), {
+      parse_mode: 'HTML',
+      reply_markup: buildMainMenuKeyboard(),
+    });
   } else {
     // Первый раз — запускаем онбординг
     setOnboardingState(ctx.chat.id, 'waiting_name');
@@ -231,12 +236,81 @@ bot.command('help', async (ctx) => {
 
 bot.on('callback_query:data', async (ctx) => {
   const data = ctx.callbackQuery.data;
+
   if (data.startsWith('settings:')) {
     await handleSettingsCallback(ctx);
-  } else {
-    await ctx.answerCallbackQuery();
+    return;
   }
+
+  if (data.startsWith('projects:')) {
+    await handleProjectsCallback(ctx, handleMessage);
+    return;
+  }
+
+  if (data.startsWith('menu:')) {
+    await handleMenuCallback(ctx);
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 });
+
+// ── Обработка кнопок главного меню ──
+
+async function handleMenuCallback(ctx) {
+  const data = ctx.callbackQuery.data;
+  const chatId = ctx.chat.id;
+  await ctx.answerCallbackQuery();
+
+  switch (data) {
+    case 'menu:new_session':
+      killSession(chatId);
+      await ctx.reply('Новая сессия. Пиши задачу.');
+      break;
+
+    case 'menu:projects':
+      await ctx.reply(getProjectsText(), {
+        parse_mode: 'HTML',
+        reply_markup: buildProjectsKeyboard(),
+      });
+      break;
+
+    case 'menu:sessions':
+      await handleMessage(ctx, PROMPT_COMMANDS.sessions.prompt);
+      break;
+
+    case 'menu:skills':
+      await handleMessage(ctx, PROMPT_COMMANDS.skills.prompt);
+      break;
+
+    case 'menu:server':
+      await handleMessage(ctx, PROMPT_COMMANDS.recovery.prompt);
+      break;
+
+    case 'menu:mcp':
+      await handleMessage(ctx, 'Покажи подключённые MCP-серверы. Прочитай ~/.claude.json → mcpServers и покажи список.');
+      break;
+
+    case 'menu:settings':
+      await ctx.reply(getSettingsText(), {
+        parse_mode: 'HTML',
+        reply_markup: buildSettingsKeyboard(),
+      });
+      break;
+
+    case 'menu:monitoring':
+      await handleMessage(ctx, PROMPT_COMMANDS.monitor.prompt);
+      break;
+
+    case 'menu:back':
+      await ctx.deleteMessage().catch(() => {});
+      await ctx.reply(getMainMenuText(), {
+        parse_mode: 'HTML',
+        reply_markup: buildMainMenuKeyboard(),
+      });
+      break;
+  }
+}
 
 // ── Текст ──
 
@@ -256,6 +330,11 @@ bot.on('message:text', async (ctx) => {
       completeOnboarding();
       clearOnboardingState(chatId);
       await ctx.reply(getGreetingAfterName(name), { parse_mode: 'HTML' });
+      // Показываем главное меню после онбординга
+      await ctx.reply(getMainMenuText(), {
+        parse_mode: 'HTML',
+        reply_markup: buildMainMenuKeyboard(),
+      });
     } else {
       await ctx.reply('Имя должно быть от 1 до 50 символов. Попробуй ещё раз:');
     }
