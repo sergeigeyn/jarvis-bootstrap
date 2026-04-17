@@ -98,6 +98,7 @@ class EngineSession {
       env,
       cwd: config.workspaceDir,
       timeout: 5 * 60 * 1000,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     this.process = proc;
