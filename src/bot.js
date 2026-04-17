@@ -8,6 +8,10 @@ import { processResponse, detectSensitiveInput } from './hooks.js';
 import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
 import { startScheduler } from './scheduler.js';
 import {
+  getTodayCost, getCostHistory, getDailyLimit, getPermissionMode,
+  getTimezone, isCostPaused, unpauseCost,
+} from './state.js';
+import {
   isOnboarded, getOnboardingState, setOnboardingState, clearOnboardingState,
   getWelcomeMessage, getGreetingAfterName, getReturningMessage,
   setOwnerName, completeOnboarding, getAgentName,
@@ -126,6 +130,25 @@ async function handleMessage(ctx, promptText) {
       clearInterval(typingInterval);
       await ctx.reply(`Ошибка: ${err.message.slice(0, 500)}`);
     },
+    onCostWarning: async (cost) => {
+      const limit = getDailyLimit();
+      const today = getTodayCost();
+      await ctx.reply(
+        `⚠️ <b>80% дневного лимита</b>\n\n` +
+        `Потрачено: $${today.toFixed(2)} / $${limit}\n` +
+        `При 100% запросы будут приостановлены.`,
+        { parse_mode: 'HTML' }
+      );
+    },
+    onCostPaused: async () => {
+      const limit = getDailyLimit();
+      await ctx.reply(
+        `⏸ <b>Дневной лимит достигнут</b>\n\n` +
+        `Лимит: $${limit}/день. Запросы приостановлены до завтра.\n` +
+        `Снять паузу: /settings → Лимит расходов`,
+        { parse_mode: 'HTML' }
+      );
+    },
   });
 }
 
@@ -138,7 +161,7 @@ const PROMPT_COMMANDS = {
   sessions: { prompt: 'Покажи информацию об активных сессиях и последней активности.', description: 'Сессии' },
   connect:  { prompt: 'Настрой VS Code туннель для удалённого доступа к серверу. Используй code tunnel CLI.', description: 'VS Code туннель' },
   recovery: { prompt: 'Покажи SSH-доступ к серверу: IP, порт, пользователь. Проверь что SSH работает.', description: 'Аварийный доступ' },
-  cost:     { prompt: 'Покажи расходы за сегодня: использование API, токены, запросы. Проверь логи.', description: 'Расходы за день' },
+  // cost — отдельная команда с реальными данными из state.js
   monitor:  { prompt: 'Проверь статус мониторинга. Прочитай ~/.iia/monitor/config.json если есть, покажи что отслеживается.', description: 'Статус мониторинга' },
   digest:   { prompt: 'Сделай дайджест — что произошло за сегодня. Проверь daily notes, git log, задачи.', description: 'Дайджест контента' },
   sources:  { prompt: 'Покажи настроенные каналы и аккаунты для мониторинга. Проверь конфиги в ~/.iia/monitor/.', description: 'Каналы и аккаунты' },
@@ -207,15 +230,46 @@ bot.command('stop', async (ctx) => {
   }
 });
 
+bot.command('cost', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const today = getTodayCost();
+  const limit = getDailyLimit();
+  const history = getCostHistory();
+  const paused = isCostPaused();
+
+  const days = Object.keys(history).sort().slice(-7);
+  const historyLines = days.length > 0
+    ? days.map(d => `  ${d}: $${history[d].toFixed(2)}`).join('\n')
+    : '  Нет данных';
+
+  const pct = limit > 0 ? Math.round((today / limit) * 100) : 0;
+  const bar = limit > 0 ? `(${pct}% лимита)` : '(без лимита)';
+
+  await ctx.reply(
+    `<b>Расходы</b>\n\n` +
+    `Сегодня: <b>$${today.toFixed(2)}</b> ${bar}\n` +
+    `Лимит: $${limit}/день\n` +
+    (paused ? `⏸ <b>Приостановлено</b> — лимит достигнут\n` : '') +
+    `\nИстория (7 дней):\n<pre>${historyLines}</pre>`,
+    { parse_mode: 'HTML' }
+  );
+});
+
 bot.command('status', async (ctx) => {
   if (!isAdmin(ctx)) return;
   const session = getSession(ctx.chat.id);
   const trust = getTrustState();
+  const today = getTodayCost();
+  const limit = getDailyLimit();
+  const permMode = getPermissionMode();
+  const permLabels = { auto: '🤖 авто', control: '☝🏽 контроль', plan: '🤓 план' };
   await ctx.reply(
     `<b>Статус системы</b>\n\n` +
     `🤖 Агент: ${getAgentName()}\n` +
     `⚙️ Движок: ${engineInfo.name}\n` +
     `📊 Сессия: ${session.busy ? 'занята' : 'свободна'}\n` +
+    `🎛 Режим: ${permLabels[permMode] || permMode}\n` +
+    `💰 Сегодня: $${today.toFixed(2)} / $${limit}\n` +
     `🔒 Trust: ${trust.level} — ${getTrustName()} (${trust.sessions} сессий)\n` +
     `🕐 Последняя активность: ${new Date(session.lastActivity).toLocaleTimeString()}`,
     { parse_mode: 'HTML' }

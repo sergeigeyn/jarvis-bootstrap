@@ -6,6 +6,11 @@ import { config } from './config.js';
 import { getProfile, setOwnerName, setAgentName, resetOnboarding, getAgentName, getOwnerName } from './onboarding.js';
 import { getEngineInfo, listEngines } from './engine.js';
 import { getTrustState, getTrustName } from './trust.js';
+import {
+  getPermissionMode, setPermissionMode,
+  getTodayCost, getDailyLimit, setDailyLimit,
+  getTimezone, setTimezone, isCostPaused, unpauseCost,
+} from './state.js';
 
 // ── Состояние ожидания ввода ──
 
@@ -132,27 +137,31 @@ function getCurrentModel() {
   return CLAUDE_MODELS[0]; // Opus по умолчанию
 }
 
-// ── Режим работы ──
+// ── Режимы работы (permission modes) ──
 
-const MODES = ['авто', 'ручной', 'plan'];
-let currentMode = 'авто';
-
-// ── Часовой пояс ──
-
-let timezone = 'Moscow';
+const PERM_MODES = [
+  { id: 'auto', label: 'авто', emoji: '🤖', desc: 'Агент редактирует файлы самостоятельно' },
+  { id: 'control', label: 'контроль', emoji: '☝🏽', desc: 'Пауза перед каждым изменением файла' },
+  { id: 'plan', label: 'план', emoji: '🤓', desc: 'Сначала план → одобрение → выполнение' },
+];
 
 // ── Текст карточки настроек (как в reference) ──
 
 export function getSettingsText() {
   const model = getCurrentModel();
   const modelStatus = config.engineKey ? model.name : `${model.name} (❌ не подключён)`;
+  const permMode = PERM_MODES.find(m => m.id === getPermissionMode()) || PERM_MODES[0];
+  const limit = getDailyLimit();
+  const today = getTodayCost();
+  const limitStr = limit > 0 ? `$${limit}/день` : 'без лимита';
+  const tz = getTimezone();
   return (
     `⚙️ <b>Настройки</b>\n\n` +
     `📡 Подключение: <b>${getConnectionType()}</b>\n` +
-    `🔒 Режим: 😈 <b>${currentMode}</b>\n` +
+    `🔒 Режим: ${permMode.emoji} <b>${permMode.label}</b>\n` +
     `🧠 Модель: <b>${modelStatus}</b>\n` +
-    `🕐 Часовой пояс: <b>${timezone}</b>\n` +
-    `💰 Лимит: <b>без лимита</b> · 🐷 Сегодня: <b>$0.00</b>`
+    `🕐 Часовой пояс: <b>${tz}</b>\n` +
+    `💰 Лимит: <b>${limitStr}</b> · 🐷 Сегодня: <b>$${today.toFixed(2)}</b>`
   );
 }
 
@@ -167,16 +176,19 @@ function getConnectionType() {
 
 export function buildSettingsKeyboard() {
   const model = getCurrentModel();
+  const permMode = PERM_MODES.find(m => m.id === getPermissionMode()) || PERM_MODES[0];
+  const limit = getDailyLimit();
+  const limitStr = limit > 0 ? `$${limit}/день` : 'без ограничений';
   return new InlineKeyboard()
     .text('📡 Подключение: подписка', 'settings:connection')
     .row()
     .text('🔑 Переменные окружения', 'settings:env_vars')
     .row()
-    .text(`🔒 Режим: 😈 ${currentMode}`, 'settings:mode')
+    .text(`🔒 Режим: ${permMode.emoji} ${permMode.label}`, 'settings:permmode')
     .row()
     .text(`🧠 Модель: ${model.name}`, 'settings:model')
     .row()
-    .text('💰 Лимит: без ограничений', 'settings:limit')
+    .text(`💰 Лимит: ${limitStr}`, 'settings:limit')
     .row()
     .text(`🕐 Часовой пояс`, 'settings:timezone')
     .row()
@@ -502,28 +514,34 @@ export async function handleSettingsCallback(ctx) {
     return;
   }
 
-  // ── Режим ──
-  if (data === 'settings:mode') {
+  // ── Режим (permission modes) ──
+  if (data === 'settings:permmode') {
+    const current = getPermissionMode();
     const kb = new InlineKeyboard();
-    for (const m of MODES) {
-      const mark = m === currentMode ? ' ✓' : '';
-      kb.text(`${m}${mark}`, `settings:mode_pick:${m}`);
+    for (const m of PERM_MODES) {
+      const mark = m.id === current ? ' ✓' : '';
+      kb.text(`${m.emoji} ${m.label}${mark}`, `settings:permmode_set:${m.id}`).row();
     }
-    kb.row().text('« Назад', 'settings:back');
+    kb.text('« Назад', 'settings:back');
+    const currentPerm = PERM_MODES.find(m => m.id === current) || PERM_MODES[0];
     await ctx.answerCallbackQuery();
-    await ctx.reply(`<b>Режим работы</b>\n\nТекущий: <b>${currentMode}</b>`, {
-      parse_mode: 'HTML',
-      reply_markup: kb,
-    });
+    await ctx.reply(
+      `<b>Режим работы</b>\n\n` +
+      `Текущий: ${currentPerm.emoji} <b>${currentPerm.label}</b>\n\n` +
+      PERM_MODES.map(m =>
+        `${m.id === current ? '→ ' : '  '}${m.emoji} <b>${m.label}</b> — ${m.desc}`
+      ).join('\n') +
+      `\n\n⚠️ При смене режима сессия сбрасывается.`,
+      { parse_mode: 'HTML', reply_markup: kb }
+    );
     return;
   }
 
-  if (data.startsWith('settings:mode_pick:')) {
+  if (data.startsWith('settings:permmode_set:')) {
     const mode = data.split(':')[2];
-    if (MODES.includes(mode)) {
-      currentMode = mode;
-    }
-    await ctx.answerCallbackQuery({ text: `Режим: ${currentMode}` });
+    setPermissionMode(mode);
+    const perm = PERM_MODES.find(m => m.id === mode) || PERM_MODES[0];
+    await ctx.answerCallbackQuery({ text: `Режим: ${perm.label}` });
     await ctx.deleteMessage().catch(() => {});
     await ctx.reply(getSettingsText(), {
       parse_mode: 'HTML',
@@ -621,35 +639,69 @@ export async function handleSettingsCallback(ctx) {
     return;
   }
 
-  // ── Лимит ──
+  // ── Лимит расходов ──
   if (data === 'settings:limit') {
+    const limit = getDailyLimit();
+    const today = getTodayCost();
+    const paused = isCostPaused();
+    const limitStr = limit > 0 ? `$${limit}/день` : 'без ограничений';
+    const kb = new InlineKeyboard()
+      .text('$10', 'settings:limit_set:10').text('$25', 'settings:limit_set:25').text('$50', 'settings:limit_set:50').row()
+      .text('$100', 'settings:limit_set:100').text('$200', 'settings:limit_set:200').text('Без лимита', 'settings:limit_set:0').row();
+    if (paused) {
+      kb.text('▶️ Снять паузу', 'settings:limit_unpause').row();
+    }
+    kb.text('« Назад', 'settings:back');
     await ctx.answerCallbackQuery();
     await ctx.reply(
       `<b>💰 Лимит расходов</b>\n\n` +
-      `Текущий: <b>без ограничений</b>\n` +
-      `Сегодня: <b>$0.00</b>\n\n` +
-      `Настройка лимитов пока в разработке. Сейчас расходы не ограничены.`,
-      {
-        parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard().text('« Назад', 'settings:back'),
-      }
+      `Текущий: <b>${limitStr}</b>\n` +
+      `Сегодня: <b>$${today.toFixed(2)}</b>` +
+      (paused ? `\n⏸ <b>Приостановлено</b> — лимит достигнут` : '') +
+      `\n\nВыбери дневной лимит:`,
+      { parse_mode: 'HTML', reply_markup: kb }
     );
+    return;
+  }
+
+  if (data.startsWith('settings:limit_set:')) {
+    const val = parseInt(data.split(':')[2], 10);
+    setDailyLimit(val);
+    const label = val > 0 ? `$${val}/день` : 'без ограничений';
+    await ctx.answerCallbackQuery({ text: `Лимит: ${label}` });
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(getSettingsText(), {
+      parse_mode: 'HTML',
+      reply_markup: buildSettingsKeyboard(),
+    });
+    return;
+  }
+
+  if (data === 'settings:limit_unpause') {
+    unpauseCost();
+    await ctx.answerCallbackQuery({ text: 'Пауза снята' });
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(getSettingsText(), {
+      parse_mode: 'HTML',
+      reply_markup: buildSettingsKeyboard(),
+    });
     return;
   }
 
   // ── Часовой пояс ──
   if (data === 'settings:timezone') {
-    const zones = ['Moscow', 'UTC', 'Europe/London', 'US/Eastern', 'US/Pacific', 'Asia/Tokyo'];
+    const zones = ['Europe/Moscow', 'UTC', 'Europe/London', 'US/Eastern', 'US/Pacific', 'Asia/Tokyo'];
+    const current = getTimezone();
     const kb = new InlineKeyboard();
     for (let i = 0; i < zones.length; i++) {
       const z = zones[i];
-      const mark = z === timezone ? ' ✓' : '';
-      kb.text(`${z}${mark}`, `settings:tz_pick:${z}`);
+      const mark = z === current ? ' ✓' : '';
+      kb.text(`${z.replace('Europe/', '').replace('US/', '').replace('Asia/', '')}${mark}`, `settings:tz_pick:${z}`);
       if ((i + 1) % 2 === 0) kb.row();
     }
     kb.row().text('« Назад', 'settings:back');
     await ctx.answerCallbackQuery();
-    await ctx.reply(`<b>Часовой пояс</b>\n\nТекущий: <b>${timezone}</b>`, {
+    await ctx.reply(`<b>Часовой пояс</b>\n\nТекущий: <b>${current}</b>`, {
       parse_mode: 'HTML',
       reply_markup: kb,
     });
@@ -657,8 +709,9 @@ export async function handleSettingsCallback(ctx) {
   }
 
   if (data.startsWith('settings:tz_pick:')) {
-    timezone = data.replace('settings:tz_pick:', '');
-    await ctx.answerCallbackQuery({ text: `Часовой пояс: ${timezone}` });
+    const tz = data.replace('settings:tz_pick:', '');
+    setTimezone(tz);
+    await ctx.answerCallbackQuery({ text: `Часовой пояс: ${tz}` });
     await ctx.deleteMessage().catch(() => {});
     await ctx.reply(getSettingsText(), {
       parse_mode: 'HTML',
