@@ -5,32 +5,35 @@
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   Telegram   │────▶│   bot.js         │────▶│  AI Engine      │
-│   (grammy)   │◀────│   (Node.js)      │◀────│  CLI            │
+│   (grammy)   │◀────│   (Node.js)      │◀────│  CLI (stream)   │
 └──────────────┘     └──────────────────┘     └─────────────────┘
                             │                        │
                      ┌──────┴──────┐          ┌──────┴──────┐
                      │  engine.js  │          │  workspace/  │
-                     │  media.js   │          │  SOUL.md     │
-                     │  hooks.js   │          │  CLAUDE.md   │
-                     │  trust.js   │          │  MEMORY.md   │
-                     │  scheduler  │          │  skills/     │
-                     │  config     │          │  knowledge/  │
+                     │  state.js   │          │  SOUL.md     │
+                     │  media.js   │          │  CLAUDE.md   │
+                     │  hooks.js   │          │  MEMORY.md   │
+                     │  trust.js   │          │  skills/     │
+                     │  scheduler  │          │  knowledge/  │
+                     │  config     │          │  monitor     │
                      └─────────────┘          └─────────────┘
 ```
 
 ## Слои системы
 
-Четыре слоя, каждый решает свою задачу:
+Шесть слоёв:
 
 | # | Слой | Что делает | Модуль |
 |---|---|---|---|
 | 1 | Обвязка | Telegram ↔ CLI, медиа, форматирование | bot.js, engine.js, media.js |
-| 2 | Безопасность | Код-гейты для деструктивных операций | hooks.js |
-| 3 | Оркестрация | Расписания, проактивные сканы | scheduler.js |
-| 4 | Память | MEMORY.md, daily notes, knowledge/ | (внутри CLI-агента) |
+| 2 | Состояние | Персистентный стейт: сессии, расходы, режим | state.js |
+| 3 | Безопасность | Код-гейты, маскировка, allowed/disallowed tools | hooks.js |
+| 4 | Контроль | Permission modes (auto/control/plan), cost limits | state.js, engine.js |
+| 5 | Оркестрация | Расписания, мониторинг, проактивные сканы | scheduler.js, monitor.js |
+| 6 | Память | MEMORY.md, daily notes, knowledge/ | (внутри CLI-агента) |
 
-Важно: уровни 1-2 — детерминистические (код). Уровень 3-4 — вероятностные (модель).
-Для необратимых операций решение принимает код (hooks), не модель.
+Уровни 1-4 — детерминистические (код). Уровни 5-6 — вероятностные (модель).
+Для необратимых операций решение принимает код (hooks + state), не модель.
 
 ## Поддерживаемые движки
 
@@ -45,33 +48,60 @@
 ## Поток сообщения
 
 ```
-Telegram → bot.js → [media.js] → engine.js → [hooks.js] → CLI → ответ
-                                                                   │
-                                              hooks.js ← парсинг ←─┘
-                                                │
-                                          [блок / пропуск]
-                                                │
-                                         bot.js → Telegram
+Telegram → bot.js → [media.js] → engine.js → CLI (stream-json)
+                                                       │
+                                    state.js ← cost ←──┤
+                                    hooks.js ← parse ←──┘
+                                         │
+                                   [блок / пропуск]
+                                         │
+                                  bot.js → Telegram
 ```
 
 1. **Входящее** → Telegram update → grammy
 2. **Предобработка** → определение типа (текст/голос/фото/документ)
    - Голос: скачивание → Deepgram транскрипция → текст
    - Фото/документ: скачивание → путь в промпт
-3. **Engine** → spawn CLI-процесса:
-   - Claude: `claude --print --output-format text <prompt>`
+3. **State** → загрузка стейта: permissionMode, sessionId, costPaused
+4. **Engine** → spawn CLI-процесса с полным набором аргументов:
+   - Claude: `claude -p <prompt> --output-format stream-json --max-turns 25 --permission-mode <mode> --allowedTools <tools> --disallowedTools <blocked>`
    - Codex: `codex --full-auto --quiet <prompt>`
-4. **Hooks (пост)** → проверка ответа на секреты, деструктивные команды
-5. **Постобработка** → парсинг медиа-маркеров `[ФОТО:]`, `[ФАЙЛ:]`
-6. **Исходящее** → медиа + текст → Telegram
+5. **Stream parse** → парсинг JSON-стрима: текст, cost, sessionId, tool usage
+6. **Cost tracking** → запись расхода в state.json, проверка лимита
+7. **Hooks (пост)** → проверка ответа на секреты, деструктивные команды
+8. **Постобработка** → парсинг медиа-маркеров `[ФОТО:]`, `[ФАЙЛ:]`
+9. **Исходящее** → медиа + текст → Telegram
 
 ## Модули
 
 ### config.js
 Загрузка `.env` из `~/.jarvis/.env`, определение движка и API-ключа, валидация обязательных параметров.
 
+### state.js
+Персистентный стейт в `~/.jarvis/state.json`. Атомарная запись (tmp + rename).
+
+Хранит:
+- `permissionMode` — auto / control / plan (дефолт: auto)
+- `sessionId` — ID текущей CLI-сессии (для --resume)
+- `costHistory` — расходы по дням { "2026-04-17": 1.23 } (30 дней)
+- `dailySpendLimit` — лимит в USD (дефолт: $50)
+- `costPaused` — автопауза при достижении лимита
+- `lastCostAlert` — дата последнего предупреждения (80%)
+- `authMode` — subscription / api-key (автодетект)
+- `activeProject` — текущий проект
+- `timezone` — часовой пояс владельца
+
 ### engine.js
 Абстракция над CLI-агентами (Claude Code, Codex). Единый интерфейс `send(prompt)` → `onDone(response)`.
+
+CLI-аргументы Claude:
+- `--output-format stream-json` — структурированный стрим (cost, sessionId, tool calls)
+- `--max-turns 25` — ограничение итераций
+- `--permission-mode <mode>` — из state.js (acceptEdits / auto)
+- `--allowedTools <list>` — Bash, WebSearch, WebFetch + MCP-серверы
+- `--disallowedTools <patterns>` — rm -rf, sudo, kill, pkill, shutdown, reboot, mkfs, dd
+- `--resume <sessionId>` — восстановление сессии из state.json
+
 Управление сессиями, таймаутами (5 мин), авто-очистка idle сессий (10 мин).
 
 ### menu.js
@@ -97,15 +127,19 @@ Telegram → bot.js → [media.js] → engine.js → [hooks.js] → CLI → от
 Конфиг хуков: `~/.jarvis/hooks.json` (опционально, дефолтные правила встроены).
 
 ### trust.js
-Динамический уровень доверия. Растёт с количеством сессий:
+Динамический уровень доверия (наследие, совместим с permission modes).
+Растёт с количеством сессий. Счётчик в `~/.jarvis/trust.json`.
 
-| Уровень | Сессий | Поведение |
-|---|---|---|
-| 0 — новичок | 0-10 | Подтверждение на YELLOW + RED |
-| 1 — знакомый | 11-50 | Подтверждение только на RED |
-| 2 — доверенный | 51+ | Подтверждение только на критические RED |
-
-Счётчик хранится в `~/.jarvis/trust.json`. Уровень можно задать вручную в `.env` (`TRUST_LEVEL=2`).
+> **Permission modes** (из state.js) — основной механизм контроля:
+>
+> | Режим | Поведение | CLI-флаг |
+> |---|---|---|
+> | auto | Агент редактирует файлы самостоятельно | acceptEdits |
+> | control | Пауза перед каждым изменением файла | — |
+> | plan | Сначала план → одобрение → выполнение | — |
+>
+> При смене режима сессия сбрасывается (sessionId = null).
+> Режим хранится в state.json, UI в settings.js.
 
 ### scheduler.js
 Расписания из `~/.jarvis/schedules.json`. Типы: daily, weekly, once.
@@ -117,6 +151,38 @@ Telegram → bot.js → [media.js] → engine.js → [hooks.js] → CLI → от
 ### bot.js
 Telegram бот (grammy + auto-retry): команды `/start`, `/settings`, `/status`, 18 команд через `setMyCommands`. Роутинг callback-кнопок (menu:*, settings:*, projects:*). Автодетект токенов в сообщениях и файлах. Обработчики текста, голоса, фото, документов.
 Typing-индикатор, разбивка длинных ответов (4000 символов), graceful shutdown.
+
+## Cost Tracking
+
+Расходы извлекаются из stream-json вывода CLI и накапливаются в state.json.
+
+```
+CLI stream-json → парсинг cost_usd → state.costHistory[date] += cost
+                                            │
+                                    ┌───────┴────────┐
+                                    │ dailySpendLimit │
+                                    │ (дефолт $50)    │
+                                    └───────┬────────┘
+                                            │
+                               80% → предупреждение
+                              100% → costPaused = true → блок запросов
+```
+
+- История хранится 30 дней, старые записи автоочищаются
+- Лимит настраивается через /settings → Лимит расходов
+- При паузе — сообщение пользователю, запросы не проходят до ручного снятия
+- /cost показывает расход за сегодня и историю
+
+## Авторизация
+
+Два режима, автодетект:
+
+| Режим | Переменная | Детект | Особенности |
+|---|---|---|---|
+| subscription | `CLAUDE_CODE_OAUTH_TOKEN` | Токен `sk-ant-oat` / `sk-ant-ort` | Персистентные сессии через sessionId |
+| api-key | `ANTHROPIC_API_KEY` | Обычный API-ключ | Stateless, каждый запрос отдельно |
+
+Автодетект: если `ANTHROPIC_API_KEY` содержит subscription-токен (`sk-ant-oat*`), он автоматически переносится в `CLAUDE_CODE_OAUTH_TOKEN`. authMode сохраняется в state.json.
 
 ## Идентичность агента (TELOS)
 
@@ -156,16 +222,16 @@ Typing-индикатор, разбивка длинных ответов (4000 
 
 ## Эволюция агента
 
-### Фаза 1: Персональный агент (текущая)
-Один агент, один владелец. Инструменты, память, навыки.
+### Фаза 1: Ядро (готово)
+Telegram ↔ CLI обвязка, медиа, безопасность, онбординг, settings UI.
 
-### Фаза 2: Рост доверия
-Динамический trust level. Агент начинает делать больше без спроса.
-Автоматическое извлечение навыков из рабочих паттернов.
+### Фаза 2: Паритет с IIA (текущая)
+State persistence, stream-json, cost tracking, permission modes, auth modes.
+Мониторинг источников (YouTube, Twitter, GitHub, RSS).
 
 ### Фаза 3: Проактивность
-Агент сам сканирует проекты, замечает задачи, предлагает решения.
-Утренние/вечерние сводки без запроса.
+Утренние/вечерние брифинги, авто-дайджесты, сканирование проектов.
+Автоматическое извлечение навыков из рабочих паттернов.
 
 ### Фаза 4: Команда агентов (roadmap)
 Специализированные агенты наследуют контекст ядра.
@@ -179,9 +245,11 @@ A2A/MCP протоколы. Агенты общаются с агентами д
 ```
 ~/.jarvis/
 ├── .env              # ENGINE + ключи (chmod 600)
+├── state.json        # Персистентный стейт (сессия, расходы, режим)
 ├── schedules.json    # Расписания
 ├── hooks.json        # Пользовательские хуки (опционально)
-└── trust.json        # Счётчик сессий и trust level
+├── trust.json        # Счётчик сессий и trust level
+└── project.json      # Текущий проект
 
 ~/workspace/
 ├── SOUL.md           # Идентичность

@@ -62,15 +62,17 @@ node src/bot.js
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   Telegram   │────▶│   bot.js         │────▶│  AI Engine      │
-│   (grammy)   │◀────│   (Node.js)      │◀────│  CLI            │
+│   (grammy)   │◀────│   (Node.js)      │◀────│  CLI (stream)   │
 └──────────────┘     └──────────────────┘     └─────────────────┘
                             │                        │
                      ┌──────┴──────┐          ┌──────┴──────┐
                      │  engine.js  │          │  workspace/  │
-                     │  media.js   │          │  SOUL.md     │
-                     │  hooks.js   │          │  CLAUDE.md   │
+                     │  state.js   │          │  SOUL.md     │
+                     │  media.js   │          │  CLAUDE.md   │
+                     │  hooks.js   │          │  MEMORY.md   │
                      │  trust.js   │          │  skills/     │
                      │  scheduler  │          │  knowledge/  │
+                     │  config     │          │  monitor     │
                      └─────────────┘          └─────────────┘
 ```
 
@@ -110,7 +112,8 @@ jarvis-bootstrap/
 ├── src/
 │   ├── bot.js          # Telegram бот (grammy), команды, роутинг
 │   ├── config.js       # Конфигурация и .env
-│   ├── engine.js       # Абстракция: Claude / Codex
+│   ├── engine.js       # Абстракция: Claude / Codex, stream-json парсинг
+│   ├── state.js        # Персистентный стейт (сессии, расходы, режим)
 │   ├── menu.js         # Главное меню (8 inline-кнопок)
 │   ├── projects.js     # Проекты: список, пагинация, переключение
 │   ├── onboarding.js   # Онбординг: профиль, знакомство, идентичность
@@ -135,10 +138,12 @@ jarvis-bootstrap/
 ```
 ~/.jarvis/
 ├── .env              # ENGINE + ключи (chmod 600)
+├── state.json        # Персистентный стейт (сессия, расходы, режим)
 ├── profile.json      # Профиль владельца (имя, настройки)
 ├── schedules.json    # Расписания
 ├── hooks.json        # Пользовательские хуки (опционально)
-└── trust.json        # Счётчик сессий и trust level
+├── trust.json        # Счётчик сессий и trust level
+└── project.json      # Текущий проект
 
 ~/workspace/
 ├── SOUL.md           # Личность (кто)
@@ -215,6 +220,7 @@ sudo systemctl restart jarvis-bot
 
 ## Roadmap
 
+### Готово
 - [x] Multi-engine (Claude / Codex)
 - [x] Telegram installer bot (Timeweb Cloud + Aéza Cloud)
 - [x] E2E деплой через Aéza — AlmaLinux, мульти-дистрибутив
@@ -228,8 +234,19 @@ sudo systemctl restart jarvis-bot
 - [x] Контекст личности — engine знает кто владелец и кто агент
 - [x] OAuth-токен подписки (CLAUDE_CODE_OAUTH_TOKEN) + автодетект токенов
 - [x] Предупреждение безопасности при отправке ключей в чат (11 типов секретов)
+
+### Фаза 2: Паритет с IIA
+- [ ] **state.js** — персистентный стейт (state.json): сессии, расходы, режим, authMode
+- [ ] **stream-json** — парсинг CLI-вывода: cost, sessionId, tool usage
+- [ ] **Cost tracking** — costHistory по дням, dailySpendLimit ($50), auto-pause на 100%, alert на 80%
+- [ ] **Permission modes** — auto/control/plan с UI в settings, session reset при смене
+- [ ] **CLI args** — --max-turns 25, --allowedTools, --disallowedTools, --resume
+- [ ] **Auth mode** — автодетект subscription vs api-key, persist в state.json
+- [ ] **Мониторинг** — YouTube, Twitter, GitHub, Telegram, RSS + storage backend
+
+### Далее
 - [ ] Changelog в боте (уведомления об обновлениях)
-- [ ] Проактивный режим (утренние/вечерние сканы)
+- [ ] Проактивный режим (утренние/вечерние брифинги)
 - [ ] Авто-извлечение навыков из паттернов
 - [ ] Оплата (ЮKassa, Stripe)
 - [ ] Дополнительные VPS-провайдеры (Hetzner, VDSina)
