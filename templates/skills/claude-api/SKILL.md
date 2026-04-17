@@ -9,7 +9,7 @@ description: Build, debug, and optimize Claude API / Anthropic SDK apps. TRIGGER
 Code must call Claude through the official Anthropic SDK for the project's language. Never mix SDK with raw HTTP. Never fall back to OpenAI-compatible shims.
 
 ## Defaults
-- Model: `claude-opus-4-6` (unless user specifies otherwise)
+- Model: `claude-opus-4-7` (unless user specifies otherwise)
 - Thinking: Adaptive thinking (`thinking: {type: "adaptive"}`)
 - Streaming for long input/output
 - max_tokens: ~16K (non-streaming) or ~64K (streaming)
@@ -31,23 +31,23 @@ Code must call Claude through the official Anthropic SDK for the project's langu
 
 | Model | ID | Context | Input $/1M | Output $/1M |
 |-------|-----|---------|-----------|------------|
-| Claude Opus 4.6 | `claude-opus-4-6` | 200K | $5.00 | $25.00 |
+| Claude Opus 4.7 | `claude-opus-4-7` | 1M | $5.00 | $25.00 |
 | Claude Sonnet 4.6 | `claude-sonnet-4-6` | 200K | $3.00 | $15.00 |
 | Claude Haiku 4.5 | `claude-haiku-4-5` | 200K | $1.00 | $5.00 |
 
-ALWAYS use `claude-opus-4-6` unless user explicitly names a different model.
+ALWAYS use `claude-opus-4-7` unless user explicitly names a different model.
 
 ## Thinking & Effort
-- Opus/Sonnet 4.6: Use `thinking: {type: "adaptive"}`. Do NOT use budget_tokens (deprecated).
-- Effort: `output_config: {effort: "low"|"medium"|"high"|"max"}`. Default is high. max is Opus only.
+- Opus 4.7 / Sonnet 4.6: Use `thinking: {type: "adaptive"}`. Do NOT use budget_tokens (deprecated).
+- Effort: `output_config: {effort: "low"|"medium"|"high"|"max"|"xhigh"}`. Default is high. max/xhigh — Opus only.
 
 ## Prompt Caching
 Prefix match. Keep stable content first, volatile last. Max 4 breakpoints. Verify with `usage.cache_read_input_tokens`.
 
 ## Common Pitfalls
 - Don't lowball max_tokens — hitting cap truncates output
-- Don't use budget_tokens on Opus/Sonnet 4.6
-- Don't use assistant prefills on Opus 4.6 (use structured outputs)
+- Don't use budget_tokens on Opus 4.7 / Sonnet 4.6
+- Don't use assistant prefills on Opus 4.7 (use structured outputs)
 - Always parse tool inputs with json.loads()/JSON.parse()
 - Use SDK helpers (.finalMessage(), typed exceptions, SDK types)
 

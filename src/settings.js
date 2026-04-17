@@ -123,7 +123,7 @@ const ENGINE_KEY_MAP = {
 // ── Модели ──
 
 const CLAUDE_MODELS = [
-  { id: 'opus', name: 'Opus 4.6', modelId: 'claude-opus-4-6', emoji: '🧠' },
+  { id: 'opus', name: 'Opus 4.7', modelId: 'claude-opus-4-7', emoji: '🧠' },
   { id: 'sonnet', name: 'Sonnet 4.6', modelId: 'claude-sonnet-4-6', emoji: '⚡' },
   { id: 'haiku', name: 'Haiku 4.5', modelId: 'claude-haiku-4-5-20251001', emoji: '🍃' },
 ];
