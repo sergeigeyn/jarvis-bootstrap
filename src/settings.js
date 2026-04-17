@@ -1,6 +1,6 @@
 // Меню настроек — inline-клавиатура в Telegram
 import { InlineKeyboard } from 'grammy';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { config } from './config.js';
 import { getProfile, setOwnerName, setAgentName, resetOnboarding, getAgentName, getOwnerName } from './onboarding.js';
@@ -189,9 +189,17 @@ export function buildSettingsKeyboard() {
 
 // ── Обновление .env ──
 
-function updateEnvFile(engineId, apiKey) {
+function ensureEnvFile() {
   const envPath = join(config.dataDir, '.env');
-  if (!existsSync(envPath)) return false;
+  if (!existsSync(envPath)) {
+    mkdirSync(config.dataDir, { recursive: true });
+    writeFileSync(envPath, '# Jarvis environment\n');
+  }
+  return envPath;
+}
+
+function updateEnvFile(engineId, apiKey) {
+  const envPath = ensureEnvFile();
 
   let content = readFileSync(envPath, 'utf8');
   const keyInfo = ENGINE_KEY_MAP[engineId];
@@ -214,9 +222,7 @@ function updateEnvFile(engineId, apiKey) {
 }
 
 function updateEnvVar(key, value) {
-  const envPath = join(config.dataDir, '.env');
-  if (!existsSync(envPath)) return false;
-
+  const envPath = ensureEnvFile();
   let content = readFileSync(envPath, 'utf8');
   if (content.match(new RegExp(`^${key}=.*`, 'm'))) {
     content = content.replace(new RegExp(`^${key}=.*`, 'm'), `${key}=${value}`);
@@ -665,19 +671,78 @@ export async function handleSettingsCallback(ctx) {
   if (data === 'settings:timers') {
     await ctx.answerCallbackQuery();
     const schedulesPath = join(config.dataDir, 'schedules.json');
-    let timersText = 'Нет таймеров.';
+    let schedules = [];
     if (existsSync(schedulesPath)) {
-      try {
-        const schedules = JSON.parse(readFileSync(schedulesPath, 'utf8'));
-        if (schedules.length > 0) {
-          timersText = schedules.map((s, i) =>
-            `${i + 1}. <b>${s.name || 'Без имени'}</b> — ${s.type}, ${s.enabled ? 'активен' : 'выключен'}`
-          ).join('\n');
-        }
-      } catch { /* ignore */ }
+      try { schedules = JSON.parse(readFileSync(schedulesPath, 'utf8')); } catch { /* ignore */ }
     }
-    await ctx.reply(`<b>Таймеры</b>\n\n${timersText}`, { parse_mode: 'HTML' });
+
+    const kb = new InlineKeyboard();
+    let timersText;
+    if (schedules.length === 0) {
+      timersText = 'Нет таймеров.\n\nСоздать можно командой в чате, например:\n<code>Создай таймер "Утренний отчёт" каждый день в 9:00</code>';
+    } else {
+      timersText = schedules.map((s, i) => {
+        const status = s.enabled ? '✅' : '⏸';
+        const time = s.hour !== undefined ? `${String(s.hour).padStart(2, '0')}:${String(s.minute ?? 0).padStart(2, '0')}` : '';
+        return `${status} <b>${s.name || 'Без имени'}</b> — ${s.type} ${time}`;
+      }).join('\n');
+      // Кнопки управления
+      for (const s of schedules) {
+        const label = s.enabled ? `⏸ ${s.name}` : `▶️ ${s.name}`;
+        kb.text(label, `settings:timer_toggle:${s.id}`);
+        kb.text(`🗑`, `settings:timer_del:${s.id}`);
+        kb.row();
+      }
+    }
+    kb.text('« Назад', 'settings:back');
+    await ctx.reply(`<b>⏰ Таймеры</b>\n\n${timersText}`, { parse_mode: 'HTML', reply_markup: kb });
     return;
+  }
+
+  if (data.startsWith('settings:timer_toggle:')) {
+    const timerId = data.replace('settings:timer_toggle:', '');
+    const schedulesPath = join(config.dataDir, 'schedules.json');
+    try {
+      const schedules = JSON.parse(readFileSync(schedulesPath, 'utf8'));
+      const timer = schedules.find(s => s.id === timerId);
+      if (timer) {
+        timer.enabled = !timer.enabled;
+        writeFileSync(schedulesPath, JSON.stringify(schedules, null, 2));
+        await ctx.answerCallbackQuery({ text: timer.enabled ? 'Включён' : 'Выключен' });
+      }
+    } catch { /* ignore */ }
+    await ctx.deleteMessage().catch(() => {});
+    // Рекурсивно показать обновлённый список
+    ctx.callbackQuery.data = 'settings:timers';
+    return handleSettingsCallback(ctx);
+  }
+
+  if (data.startsWith('settings:timer_del:')) {
+    const timerId = data.replace('settings:timer_del:', '');
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `Удалить таймер?`,
+      {
+        reply_markup: new InlineKeyboard()
+          .text('Да, удалить', `settings:timer_del_ok:${timerId}`)
+          .text('Отмена', 'settings:timers'),
+      }
+    );
+    return;
+  }
+
+  if (data.startsWith('settings:timer_del_ok:')) {
+    const timerId = data.replace('settings:timer_del_ok:', '');
+    const schedulesPath = join(config.dataDir, 'schedules.json');
+    try {
+      let schedules = JSON.parse(readFileSync(schedulesPath, 'utf8'));
+      schedules = schedules.filter(s => s.id !== timerId);
+      writeFileSync(schedulesPath, JSON.stringify(schedules, null, 2));
+      await ctx.answerCallbackQuery({ text: 'Таймер удалён' });
+    } catch { /* ignore */ }
+    await ctx.deleteMessage().catch(() => {});
+    ctx.callbackQuery.data = 'settings:timers';
+    return handleSettingsCallback(ctx);
   }
 
   // ── Дополнительно ──

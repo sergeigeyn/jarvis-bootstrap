@@ -19,15 +19,17 @@ export async function downloadFile(bot, fileId, ext = '') {
   
   return new Promise((resolve, reject) => {
     const mod = url.startsWith('https') ? https : http;
+    const timeout = setTimeout(() => reject(new Error('File download timeout (30s)')), 30_000);
     mod.get(url, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
+        clearTimeout(timeout);
         writeFileSync(filepath, Buffer.concat(chunks));
         resolve(filepath);
       });
-      res.on('error', reject);
-    }).on('error', reject);
+      res.on('error', (e) => { clearTimeout(timeout); reject(e); });
+    }).on('error', (e) => { clearTimeout(timeout); reject(e); });
   });
 }
 
@@ -35,7 +37,7 @@ export async function downloadFile(bot, fileId, ext = '') {
 
 export async function transcribeVoice(filepath) {
   if (!config.deepgramKey) {
-    return '[Голосовое сообщение — для транскрипции добавь DEEPGRAM_API_KEY]';
+    return '[Голос не распознан — добавь DEEPGRAM_API_KEY в /settings → 🔑 Переменные]';
   }
   
   const { readFileSync } = await import('fs');
@@ -53,21 +55,23 @@ export async function transcribeVoice(filepath) {
       },
     };
     
+    const timeout = setTimeout(() => reject(new Error('Deepgram timeout (30s)')), 30_000);
     const req = https.request(options, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
+        clearTimeout(timeout);
         try {
           const data = JSON.parse(Buffer.concat(chunks).toString());
           const transcript = data.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
           resolve(transcript || '[Не удалось распознать голосовое]');
         } catch (e) {
-          reject(e);
+          resolve('[Ошибка распознавания голосового]');
         }
       });
     });
-    
-    req.on('error', reject);
+
+    req.on('error', (e) => { clearTimeout(timeout); reject(e); });
     req.write(audioData);
     req.end();
   });

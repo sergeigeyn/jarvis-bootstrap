@@ -116,10 +116,10 @@ async function handleMessage(ctx, promptText) {
   session.send(promptText, {
     onDone: async (response) => {
       clearInterval(typingInterval);
-      if (response) {
+      if (response?.trim()) {
         await handleResponse(ctx, response);
       } else {
-        await ctx.reply('[Пустой ответ]');
+        await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
       }
     },
     onError: async (err) => {
@@ -354,13 +354,13 @@ bot.on('message:text', async (ctx) => {
   // 2. Settings — ждём ввод (имя владельца / агента / ключ движка)
   const waiting = getWaitingInput(chatId);
   if (waiting) {
-    // Если токен обёрнут в бэктик — извлечь из code entity
+    // Если токен обёрнут в бэктик — извлечь и склеить все code entities
     let inputText = text;
-    if (waiting.field === 'engineKey' && ctx.message.entities) {
-      const codeEntity = ctx.message.entities.find(e => e.type === 'code' || e.type === 'pre');
-      if (codeEntity) {
-        inputText = text.substring(codeEntity.offset, codeEntity.offset + codeEntity.length);
-        console.log(`[bot] extracted token from code entity: ${inputText.length} chars`);
+    if ((waiting.field === 'engineKey' || waiting.field === 'envVarValue') && ctx.message.entities) {
+      const codeEntities = ctx.message.entities.filter(e => e.type === 'code' || e.type === 'pre');
+      if (codeEntities.length > 0) {
+        inputText = codeEntities.map(e => text.substring(e.offset, e.offset + e.length)).join('');
+        console.log(`[bot] extracted token from ${codeEntities.length} code entities: ${inputText.length} chars`);
       }
     }
     const result = handleSettingsInput(chatId, inputText);
