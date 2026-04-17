@@ -78,14 +78,43 @@ node src/bot.js
 
 Бот принимает текст/голос/фото/файлы → вызывает CLI-агент → **hooks проверяют ответ** → парсит медиа-маркеры → отправляет в Telegram.
 
+## Команды
+
+При запуске бот регистрирует полное меню через Telegram `setMyCommands`:
+
+| Команда | Описание | Тип |
+|---|---|---|
+| `/start` | Приветствие / онбординг | Логика |
+| `/newtask` | Новая задача | Prompt → engine |
+| `/stop` | Остановить задачу | Логика |
+| `/clear` | Сбросить контекст | Логика |
+| `/undo` | Отменить правку (git) | Prompt → engine |
+| `/projects` | Список проектов | Prompt → engine |
+| `/sessions` | Активные сессии | Prompt → engine |
+| `/connect` | VS Code туннель | Prompt → engine |
+| `/recovery` | Аварийный доступ к серверу | Prompt → engine |
+| `/settings` | Настройки (inline-клавиатура) | Логика |
+| `/status` | Статус системы | Логика |
+| `/cost` | Расходы за день | Prompt → engine |
+| `/monitor` | Статус мониторинга | Prompt → engine |
+| `/digest` | Дайджест контента | Prompt → engine |
+| `/sources` | Каналы и аккаунты | Prompt → engine |
+| `/skills` | Навыки агента | Prompt → engine |
+| `/feedback` | Отзыв | Prompt → engine |
+| `/help` | Все команды | Логика |
+
+**Логика** — обработчик в `bot.js`. **Prompt → engine** — структурированный промпт в CLI, engine сам разберётся через tools.
+
 ## Структура проекта
 
 ```
 jarvis-bootstrap/
 ├── src/
-│   ├── bot.js          # Telegram бот (grammy)
+│   ├── bot.js          # Telegram бот (grammy), команды, роутинг
 │   ├── config.js       # Конфигурация и .env
 │   ├── engine.js       # Абстракция: Claude / Codex / Gemini
+│   ├── onboarding.js   # Онбординг: профиль, знакомство, идентичность
+│   ├── settings.js     # Меню настроек (inline-клавиатура)
 │   ├── media.js        # Медиа: Deepgram, маркеры [ФОТО:], [ФАЙЛ:]
 │   ├── hooks.js        # Код-гейты: блок деструктивных команд, маскировка секретов
 │   ├── trust.js        # Динамический trust level (0→1→2)
@@ -94,7 +123,7 @@ jarvis-bootstrap/
 │   ├── workspace/      # SOUL.md, CLAUDE.md, MEMORY.md
 │   └── skills/         # 5 встроенных навыков
 ├── scripts/
-│   └── bootstrap.sh    # Автоустановка на VPS
+│   └── bootstrap.sh    # Автоустановка на VPS (мульти-дистрибутив)
 └── docs/
     ├── architecture.md # Слои, потоки, безопасность, эволюция
     ├── customization.md # SOUL, CLAUDE, hooks, trust, навыки, расписания
@@ -106,6 +135,7 @@ jarvis-bootstrap/
 ```
 ~/.jarvis/
 ├── .env              # ENGINE + ключи (chmod 600)
+├── profile.json      # Профиль владельца (имя, настройки)
 ├── schedules.json    # Расписания
 ├── hooks.json        # Пользовательские хуки (опционально)
 └── trust.json        # Счётчик сессий и trust level
@@ -171,14 +201,19 @@ sudo systemctl restart jarvis-bot
 ## Roadmap
 
 - [x] Multi-engine (Claude / Codex / Gemini)
-- [x] Telegram installer bot (Timeweb Cloud)
+- [x] Telegram installer bot (Timeweb Cloud + Aéza Cloud)
+- [x] E2E деплой через Aéza — AlmaLinux, мульти-дистрибутив
 - [x] Код-гейты безопасности (hooks.js) — протестировано 16/16
 - [x] Динамический trust level — протестировано 16/16
+- [x] Онбординг — знакомство с владельцем при первом запуске
+- [x] Меню настроек (inline-клавиатура, /settings)
+- [x] Полное меню команд (18 команд, setMyCommands)
+- [x] Контекст личности — engine знает кто владелец и кто агент
 - [ ] Changelog в боте (уведомления об обновлениях)
 - [ ] Проактивный режим (утренние/вечерние сканы)
 - [ ] Авто-извлечение навыков из паттернов
 - [ ] Оплата (ЮKassa, Stripe)
-- [ ] Дополнительные VPS-провайдеры (Hetzner, Aéza)
+- [ ] Дополнительные VPS-провайдеры (Hetzner, VDSina)
 - [ ] Fleet management (мониторинг/обновление развёрнутых агентов)
 - [ ] Мульти-агенты, A2A протокол
 
@@ -191,8 +226,8 @@ sudo systemctl restart jarvis-bot
 
 ## Требования
 
-- Ubuntu 22.04+ / Debian 12+
-- 2+ vCPU, 4GB+ RAM
+- Ubuntu 22.04+ / Debian 12+ / AlmaLinux 9+ / RHEL 9+ / Alpine
+- 1+ vCPU, 2GB+ RAM (минимум), 2+ vCPU, 4GB+ рекомендуется
 - Node.js 22+
 
 ## Лицензия
