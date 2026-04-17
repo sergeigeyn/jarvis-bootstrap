@@ -143,20 +143,54 @@ bot.command('settings', async (ctx) => {
   });
 });
 
+bot.command('clear', async (ctx) => {
+  killSession(ctx.chat.id);
+  await ctx.reply('Контекст сброшен. Новая сессия.');
+});
+
+// /reset — алиас для /clear (обратная совместимость)
 bot.command('reset', async (ctx) => {
   killSession(ctx.chat.id);
-  await ctx.reply('Сессия сброшена.');
+  await ctx.reply('Контекст сброшен. Новая сессия.');
+});
+
+bot.command('stop', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const session = getSession(ctx.chat.id);
+  if (session.busy) {
+    session.kill();
+    await ctx.reply('Задача остановлена.');
+  } else {
+    await ctx.reply('Нет активной задачи.');
+  }
 });
 
 bot.command('status', async (ctx) => {
+  if (!isAdmin(ctx)) return;
   const session = getSession(ctx.chat.id);
   const trust = getTrustState();
   await ctx.reply(
-    `Движок: ${engineInfo.name}\n` +
-    `Агент: ${getAgentName()}\n` +
-    `Сессия: ${session.busy ? 'занята' : 'свободна'}\n` +
-    `Trust: ${trust.level} — ${getTrustName()} (${trust.sessions} сессий)\n` +
-    `Последняя активность: ${new Date(session.lastActivity).toLocaleTimeString()}`
+    `<b>Статус системы</b>\n\n` +
+    `🤖 Агент: ${getAgentName()}\n` +
+    `⚙️ Движок: ${engineInfo.name}\n` +
+    `📊 Сессия: ${session.busy ? 'занята' : 'свободна'}\n` +
+    `🔒 Trust: ${trust.level} — ${getTrustName()} (${trust.sessions} сессий)\n` +
+    `🕐 Последняя активность: ${new Date(session.lastActivity).toLocaleTimeString()}`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+bot.command('help', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  await ctx.reply(
+    `<b>Команды</b>\n\n` +
+    `/start — Приветствие\n` +
+    `/stop — Остановить задачу\n` +
+    `/clear — Сбросить контекст\n` +
+    `/settings — Настройки\n` +
+    `/status — Статус системы\n` +
+    `/help — Все команды`,
+    { parse_mode: 'HTML' }
   );
 });
 
@@ -273,8 +307,19 @@ console.log(`[bot] starting ${getAgentName()} (engine: ${engineInfo.name})...`);
 startScheduler(bot);
 
 bot.start({
-  onStart: () => {
+  onStart: async () => {
     console.log(`[bot] ${getAgentName()} is running! Engine: ${engineInfo.name}`);
+
+    // Регистрируем меню команд в Telegram
+    await bot.api.setMyCommands([
+      { command: 'start', description: 'Приветствие' },
+      { command: 'stop', description: 'Остановить задачу' },
+      { command: 'clear', description: 'Сбросить контекст' },
+      { command: 'settings', description: 'Настройки' },
+      { command: 'status', description: 'Статус системы' },
+      { command: 'help', description: 'Все команды' },
+    ]).catch((err) => console.error(`[bot] setMyCommands failed: ${err.message}`));
+
     if (config.adminId) {
       const msg = isOnboarded()
         ? `${getAgentName()} перезапущен. Движок: ${engineInfo.name}`
