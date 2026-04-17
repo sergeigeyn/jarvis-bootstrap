@@ -71,20 +71,22 @@ let timezone = 'Moscow';
 
 export function getSettingsText() {
   const engine = getEngineInfo(config.engine);
+  const connected = config.engineKey ? '✅' : '❌ не подключён';
+  const modelStatus = config.engineKey ? engine.name : `${engine.name} (${connected})`;
   return (
     `⚙️ <b>Настройки</b>\n\n` +
     `📡 Подключение: <b>${getConnectionType()}</b>\n` +
     `🔒 Режим: 😈 <b>${currentMode}</b>\n` +
-    `🧠 Модель: <b>${engine.name}</b>\n` +
+    `🧠 Модель: <b>${modelStatus}</b>\n` +
     `🕐 Часовой пояс: <b>${timezone}</b>\n` +
     `💰 Лимит: <b>без лимита</b> · 🐷 Сегодня: <b>$0.00</b>`
   );
 }
 
 function getConnectionType() {
+  if (!config.engineKey) return 'Не подключён';
   if (config.engine === 'claude') return 'Подписка Claude';
   if (config.engine === 'codex') return 'API OpenAI';
-  if (config.engine === 'gemini') return 'Gemini Free';
   return 'API';
 }
 
@@ -99,7 +101,7 @@ export function buildSettingsKeyboard() {
     .row()
     .text(`🔒 Режим: 😈 ${currentMode}`, 'settings:mode')
     .row()
-    .text(`🧠 Модель: ${engine.name}`, 'settings:engine')
+    .text(`🧠 Модель: ${engine.name}${config.engineKey ? '' : ' ❌'}`, 'settings:engine')
     .row()
     .text('💰 Лимит: без ограничений', 'settings:limit')
     .row()
@@ -240,10 +242,25 @@ export async function handleSettingsCallback(ctx) {
       await ctx.answerCallbackQuery({ text: 'Неизвестный движок' });
       return;
     }
-    if (engineId === config.engine) {
+    if (engineId === config.engine && config.engineKey) {
       await ctx.answerCallbackQuery({ text: 'Уже используется' });
       return;
     }
+    // Проверяем — может ключ уже есть в .env
+    const existingKey = process.env[keyInfo.env];
+    if (existingKey) {
+      const ok = updateEnvFile(engineId, existingKey);
+      if (ok) {
+        await ctx.answerCallbackQuery();
+        await ctx.reply(
+          `Переключаюсь на <b>${getEngineInfo(engineId).name}</b> — ключ уже есть. Перезапускаюсь...`,
+          { parse_mode: 'HTML' }
+        );
+        setTimeout(() => process.exit(0), 1500);
+        return;
+      }
+    }
+    // Ключа нет — показываем инструкцию
     waitingInput.set(chatId, { field: 'engineKey', engineId });
     await ctx.answerCallbackQuery();
     await ctx.reply(keyInfo.guide, { parse_mode: 'HTML' });

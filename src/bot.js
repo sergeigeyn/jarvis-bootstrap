@@ -89,6 +89,15 @@ async function handleMessage(ctx, promptText) {
     return;
   }
 
+  if (!config.engineKey) {
+    await ctx.reply(
+      `Движок <b>${engineInfo.name}</b> не настроен — нет API-ключа.\n\n` +
+      `Зайди в /settings → Модель и следуй инструкции.`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
   const session = getSession(ctx.chat.id);
 
   if (session.busy) {
