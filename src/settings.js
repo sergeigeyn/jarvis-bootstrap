@@ -27,33 +27,35 @@ const ENGINE_KEY_MAP = {
     hint: 'Anthropic API Key (sk-ant-...)',
     guide:
       `<b>Как получить ключ Claude Code:</b>\n\n` +
-      `<b>Вариант A — API credits:</b>\n` +
+      `<b>Вариант A — подписка Max ($100/мес):</b>\n` +
+      `1. Подключи Claude Max на claude.ai\n` +
+      `2. Зайди на сервер по SSH\n` +
+      `3. Запусти <code>claude /login</code>\n` +
+      `4. Скопируй ссылку → открой в браузере → войди\n` +
+      `5. Токен автоматически сохранится на сервере\n` +
+      `Ключ вводить не нужно.\n\n` +
+      `<b>Вариант B — API credits (по токенам):</b>\n` +
       `1. Зайди на console.anthropic.com\n` +
-      `2. Зарегистрируйся / войди\n` +
-      `3. Settings → API Keys → Create Key\n` +
-      `4. Скопируй ключ (начинается с <code>sk-ant-</code>)\n` +
-      `5. Пополни баланс (Settings → Billing)\n\n` +
-      `<b>Вариант B — подписка Claude Max ($100/мес):</b>\n` +
-      `1. Зайди на claude.ai → Settings → Subscription\n` +
-      `2. Подключи Claude Max\n` +
-      `3. Ключ не нужен — Claude Code авторизуется через <code>claude login</code>\n\n` +
-      `Если у тебя API credits — отправь ключ сюда:`,
+      `2. Settings → API Keys → Create Key\n` +
+      `3. Пополни баланс (Settings → Billing)\n\n` +
+      `Если у тебя API key — отправь его сюда:`,
   },
   codex: {
     env: 'OPENAI_API_KEY',
     hint: 'OpenAI API Key (sk-...)',
     guide:
       `<b>Как получить ключ Codex:</b>\n\n` +
-      `<b>Вариант A — API key:</b>\n` +
+      `<b>Вариант A — подписка Plus/Pro ($20-200/мес):</b>\n` +
+      `1. Подключи ChatGPT Plus или Pro на chatgpt.com\n` +
+      `2. Зайди на сервер по SSH\n` +
+      `3. Запусти <code>codex login</code>\n` +
+      `4. Скопируй ссылку → открой в браузере → войди\n` +
+      `5. Токен автоматически сохранится на сервере\n` +
+      `Ключ вводить не нужно.\n\n` +
+      `<b>Вариант B — API key (по токенам):</b>\n` +
       `1. Зайди на platform.openai.com\n` +
-      `2. Зарегистрируйся / войди\n` +
-      `3. API Keys → Create new secret key\n` +
-      `4. Скопируй ключ (начинается с <code>sk-</code>)\n` +
-      `5. Пополни баланс (Settings → Billing)\n\n` +
-      `<b>Вариант B — подписка ChatGPT Plus ($20/мес):</b>\n` +
-      `1. Зайди на chatgpt.com → Settings → Subscription\n` +
-      `2. Подключи Plus или Pro\n` +
-      `3. Codex работает через подписку без отдельного ключа\n\n` +
+      `2. API Keys → Create new secret key\n` +
+      `3. Пополни баланс (Settings → Billing)\n\n` +
       `Если у тебя API key — отправь его сюда:`,
   },
 };
