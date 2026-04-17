@@ -180,6 +180,68 @@ function updateEnvVar(key, value) {
   return true;
 }
 
+// ── Переменные окружения: UI ──
+
+// Системные переменные — не показываем в списке пользовательских
+const SYSTEM_VARS = new Set(['ENGINE', 'BOT_TOKEN', 'AGENT_NAME', 'ADMIN_ID', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
+
+function getUserEnvVars() {
+  const envPath = join(config.dataDir, '.env');
+  if (!existsSync(envPath)) return [];
+  const lines = readFileSync(envPath, 'utf8').split('\n');
+  const vars = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim();
+    if (SYSTEM_VARS.has(key)) continue;
+    vars.push({ key, value: val });
+  }
+  return vars;
+}
+
+function deleteEnvVar(key) {
+  const envPath = join(config.dataDir, '.env');
+  if (!existsSync(envPath)) return;
+  let content = readFileSync(envPath, 'utf8');
+  content = content.replace(new RegExp(`^${key}=.*\\n?`, 'm'), '');
+  writeFileSync(envPath, content);
+  delete process.env[key];
+}
+
+export function buildEnvVarsMessage() {
+  const vars = getUserEnvVars();
+  let text = `🔑 <b>Переменные окружения</b>\n\n`;
+
+  if (vars.length === 0) {
+    text += `Пусто. Добавь переменные — агент сможет использовать их для работы с внешними сервисами.\n\n`;
+    text += `Примеры: <code>GITHUB_TOKEN</code>, <code>SERPER_API_KEY</code>, <code>DEEPGRAM_API_KEY</code>`;
+  } else {
+    for (const v of vars) {
+      const masked = v.value.length > 4 ? '…' + v.value.slice(-4) : '••••';
+      text += `<code>${v.key}</code> = ${masked}\n`;
+    }
+    text += `\n${vars.length} переменных. Агент использует их через <code>$ИМЯ</code> в shell.`;
+  }
+
+  const kb = new InlineKeyboard();
+
+  // Кнопки удаления для каждой переменной (по 2 в ряд)
+  for (let i = 0; i < vars.length; i++) {
+    kb.text(`❌ ${vars[i].key}`, `settings:env_del:${vars[i].key}`);
+    if ((i + 1) % 2 === 0) kb.row();
+  }
+  if (vars.length % 2 !== 0) kb.row();
+
+  kb.text('➕ Добавить переменную', 'settings:env_add').row();
+  kb.text('« Назад', 'settings:back');
+
+  return [text, { parse_mode: 'HTML', reply_markup: kb }];
+}
+
 // ── Обработка callback-кнопок ──
 
 export async function handleSettingsCallback(ctx) {
@@ -201,27 +263,42 @@ export async function handleSettingsCallback(ctx) {
   // ── Переменные окружения ──
   if (data === 'settings:env_vars') {
     await ctx.answerCallbackQuery();
-    const envPath = join(config.dataDir, '.env');
-    let vars = '(файл .env не найден)';
-    if (existsSync(envPath)) {
-      const lines = readFileSync(envPath, 'utf8').split('\n')
-        .filter(l => l.trim() && !l.startsWith('#'))
-        .map(l => {
-          const eq = l.indexOf('=');
-          if (eq === -1) return l;
-          const key = l.slice(0, eq);
-          const val = l.slice(eq + 1);
-          // Маскируем значения
-          const masked = val.length > 4 ? '…' + val.slice(-4) : '****';
-          return `${key}=${masked}`;
-        });
-      vars = lines.join('\n') || '(пусто)';
-    }
+    await ctx.reply(...buildEnvVarsMessage());
+    return;
+  }
+
+  if (data === 'settings:env_add') {
+    waitingInput.set(chatId, { field: 'envVarName' });
+    await ctx.answerCallbackQuery();
     await ctx.reply(
-      `<b>Переменные окружения</b>\n\n<pre>${vars}</pre>\n\n` +
-      `Редактировать: <code>~/.jarvis/.env</code>`,
+      `Введи <b>имя</b> переменной:\n\n` +
+      `Например: <code>GITHUB_TOKEN</code>, <code>SERPER_API_KEY</code>, <code>DEEPGRAM_API_KEY</code>`,
       { parse_mode: 'HTML' }
     );
+    return;
+  }
+
+  if (data.startsWith('settings:env_del:')) {
+    const varName = data.replace('settings:env_del:', '');
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `Удалить переменную <code>${varName}</code>?`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('Да, удалить', `settings:env_del_ok:${varName}`)
+          .text('Отмена', 'settings:env_vars'),
+      }
+    );
+    return;
+  }
+
+  if (data.startsWith('settings:env_del_ok:')) {
+    const varName = data.replace('settings:env_del_ok:', '');
+    deleteEnvVar(varName);
+    await ctx.answerCallbackQuery({ text: `${varName} удалена` });
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(...buildEnvVarsMessage());
     return;
   }
 
@@ -513,6 +590,42 @@ export function handleSettingsInput(chatId, text) {
       };
     }
     return { error: 'Не удалось обновить .env. Проверь файл ~/.jarvis/.env' };
+  }
+
+  // ── Добавление переменной окружения: шаг 1 — имя ──
+  if (waiting.field === 'envVarName') {
+    const name = trimmed.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+    if (!name || name.length < 2) {
+      waitingInput.delete(chatId);
+      return { error: 'Имя переменной должно быть минимум 2 символа (латиница, цифры, _).' };
+    }
+    if (SYSTEM_VARS.has(name)) {
+      waitingInput.delete(chatId);
+      return { error: `<code>${name}</code> — системная переменная. Используй соответствующую кнопку в настройках.` };
+    }
+    waitingInput.set(chatId, { field: 'envVarValue', varName: name });
+    return { success: `Имя: <code>${name}</code>\n\nТеперь введи <b>значение</b>:` };
+  }
+
+  // ── Добавление переменной окружения: шаг 2 — значение ──
+  if (waiting.field === 'envVarValue') {
+    const value = trimmed.replace(/\s+/g, '');
+    if (!value) {
+      waitingInput.delete(chatId);
+      return { error: 'Значение не может быть пустым.' };
+    }
+    const varName = waiting.varName;
+    const ok = updateEnvVar(varName, value);
+    process.env[varName] = value;
+    waitingInput.delete(chatId);
+    if (ok) {
+      const masked = value.length > 4 ? '…' + value.slice(-4) : '••••';
+      return {
+        success: `✅ Сохранено: <code>${varName}</code> = ${masked}\n\nАгент может использовать через <code>$${varName}</code>.`,
+        envVarsUpdated: true,
+      };
+    }
+    return { error: 'Не удалось сохранить. Проверь файл ~/.jarvis/.env' };
   }
 
   waitingInput.delete(chatId);

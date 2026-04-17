@@ -15,6 +15,7 @@ import {
 import {
   buildSettingsKeyboard, getSettingsText, handleSettingsCallback,
   getWaitingInput, setWaitingInput, clearWaitingInput, handleSettingsInput,
+  buildEnvVarsMessage,
 } from './settings.js';
 import { buildMainMenuKeyboard, getMainMenuText, getReturningMenuText } from './menu.js';
 import { buildProjectsKeyboard, getProjectsText, handleProjectsCallback } from './projects.js';
@@ -365,12 +366,15 @@ bot.on('message:text', async (ctx) => {
     const result = handleSettingsInput(chatId, inputText);
     if (result?.success) {
       await ctx.reply(result.success, { parse_mode: 'HTML' });
-      // Смена движка — перезапуск через systemd
       if (result.restart) {
         setTimeout(() => process.exit(0), 1500);
       }
+      // После добавления переменной — показать обновлённый список
+      if (result.envVarsUpdated) {
+        await ctx.reply(...buildEnvVarsMessage());
+      }
     } else if (result?.error) {
-      await ctx.reply(result.error);
+      await ctx.reply(result.error, { parse_mode: 'HTML' });
     }
     return;
   }
