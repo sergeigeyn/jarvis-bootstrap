@@ -1,7 +1,21 @@
-// Абстракция AI-движка: Claude Code, OpenAI Codex, Gemini CLI
+// Абстракция AI-движка: Claude Code, OpenAI Codex
 import { spawn } from 'child_process';
 import { config } from './config.js';
 import { getOwnerName, getAgentName } from './onboarding.js';
+import {
+  getPermissionMode, getSessionId, setSessionId,
+  detectAuthMode, recordCost, isCostPaused,
+} from './state.js';
+
+// ── Disallowed tools (блокировка опасных паттернов на уровне CLI) ──
+
+const DISALLOWED_TOOLS = [
+  'Bash(rm -rf *)', 'Bash(rm -r *)', 'Bash(sudo *)',
+  'Bash(kill *)', 'Bash(pkill *)', 'Bash(shutdown *)',
+  'Bash(reboot *)', 'Bash(mkfs *)', 'Bash(dd if=*)',
+];
+
+const BASE_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch';
 
 // ── Конфигурации движков ──
 
@@ -9,16 +23,20 @@ const ENGINES = {
   claude: {
     name: 'Claude Code',
     bin: 'claude',
-    buildArgs: (prompt, sessionId) => {
-      const args = ['--print', '--output-format', 'text'];
+    streaming: true,
+    buildArgs: (prompt, sessionId, permMode) => {
+      const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose',
+        '--max-turns', '25',
+        '--permission-mode', permMode === 'auto' ? 'acceptEdits' : 'bypassPermissions',
+        '--allowedTools', BASE_ALLOWED_TOOLS,
+        '--disallowedTools', DISALLOWED_TOOLS.join(','),
+      ];
       if (process.env.CLAUDE_MODEL) args.push('--model', process.env.CLAUDE_MODEL);
-      if (sessionId) args.push('--session', sessionId);
-      args.push(prompt);
+      if (sessionId) args.push('--resume', sessionId);
       return args;
     },
     buildEnv: () => {
       const env = { ...process.env, HOME: config.home };
-      // OAuth-токен подписки или API-ключ
       if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
         env.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
       }
@@ -35,10 +53,8 @@ const ENGINES = {
   codex: {
     name: 'OpenAI Codex',
     bin: 'codex',
-    buildArgs: (prompt) => {
-      // codex --full-auto --quiet для non-interactive режима
-      return ['--full-auto', '--quiet', prompt];
-    },
+    streaming: false,
+    buildArgs: (prompt) => ['--full-auto', '--quiet', prompt],
     buildEnv: () => ({
       ...process.env,
       OPENAI_API_KEY: config.engineKey,
@@ -48,7 +64,6 @@ const ENGINES = {
     authEnv: 'OPENAI_API_KEY',
     plans: 'ChatGPT Plus ($20/мес) или API key',
   },
-
 };
 
 export function getEngineInfo(engineId) {
@@ -57,10 +72,48 @@ export function getEngineInfo(engineId) {
 
 export function listEngines() {
   return Object.entries(ENGINES).map(([id, e]) => ({
-    id,
-    name: e.name,
-    plans: e.plans,
+    id, name: e.name, plans: e.plans,
   }));
+}
+
+// ── Парсинг stream-json ──
+
+function parseStreamJson(raw) {
+  const lines = raw.split('\n').filter(Boolean);
+  let text = '';
+  let totalCost = 0;
+  let sessionId = null;
+
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+
+      // Текст ассистента
+      if (obj.type === 'assistant' && obj.message?.content) {
+        for (const block of obj.message.content) {
+          if (block.type === 'text') text += block.text;
+        }
+      }
+
+      // Результат (финальный текст)
+      if (obj.type === 'result') {
+        if (obj.result) text = obj.result;
+        if (obj.session_id) sessionId = obj.session_id;
+        if (obj.cost_usd) totalCost += obj.cost_usd;
+        if (obj.total_cost_usd) totalCost = obj.total_cost_usd;
+      }
+
+      // Cost из отдельных сообщений
+      if (obj.cost_usd && obj.type !== 'result') {
+        totalCost += obj.cost_usd;
+      }
+
+    } catch {
+      // Не JSON — пропускаем (stderr может попасть)
+    }
+  }
+
+  return { text: text.trim(), cost: totalCost, sessionId };
 }
 
 // ── Сессии ──
@@ -73,26 +126,37 @@ class EngineSession {
     this.process = null;
     this.busy = false;
     this.lastActivity = Date.now();
-    this.sessionId = null;
     this.engine = ENGINES[config.engine];
   }
 
-  async send(prompt, { onDone, onError }) {
+  async send(prompt, { onDone, onError, onCostWarning, onCostPaused }) {
     if (this.busy) {
       onError?.(new Error('Сессия занята, подожди...'));
+      return;
+    }
+
+    // Проверяем паузу по расходам
+    if (isCostPaused()) {
+      onError?.(new Error('⏸ Достигнут дневной лимит расходов. Снять паузу: /settings → Лимит расходов'));
       return;
     }
 
     this.busy = true;
     this.lastActivity = Date.now();
 
-    // Инъекция контекста — CLI знает кто владелец и кто он
+    // Автодетект auth mode при первом запросе
+    detectAuthMode();
+
+    // Инъекция контекста
     const owner = getOwnerName();
     const agent = getAgentName();
     const contextPrefix = `[Контекст: ты — ${agent}, владелец — ${owner}. Отвечай на русском, неформально, на ты.]\n\n`;
     const fullPrompt = contextPrefix + prompt;
 
-    const args = this.engine.buildArgs(fullPrompt, this.sessionId);
+    // Получаем persistентный sessionId
+    const sessionId = getSessionId();
+    const permMode = getPermissionMode();
+    const args = this.engine.buildArgs(fullPrompt, sessionId, permMode);
     const env = this.engine.buildEnv();
 
     const proc = spawn(this.engine.bin, args, {
@@ -114,8 +178,30 @@ class EngineSession {
       this.process = null;
       this.lastActivity = Date.now();
 
-      if (code === 0) {
-        onDone?.(stdout.trim());
+      if (code === 0 || stdout.length > 0) {
+        let responseText = stdout.trim();
+        let cost = 0;
+
+        // Парсим stream-json для Claude
+        if (this.engine.streaming && stdout.includes('{')) {
+          const parsed = parseStreamJson(stdout);
+          responseText = parsed.text || responseText;
+          cost = parsed.cost;
+
+          // Сохраняем sessionId
+          if (parsed.sessionId) {
+            setSessionId(parsed.sessionId);
+          }
+
+          // Записываем расход
+          if (cost > 0) {
+            const { paused, warning } = recordCost(cost);
+            if (paused) onCostPaused?.();
+            else if (warning) onCostWarning?.(cost);
+          }
+        }
+
+        onDone?.(responseText);
       } else {
         const errMsg = stderr.trim() || `${this.engine.name} exited with code ${code}`;
         console.error(`[engine:${config.engine}] error for chat ${this.chatId}: ${errMsg}`);
