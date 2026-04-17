@@ -477,21 +477,23 @@ export function handleSettingsInput(chatId, text) {
   }
 
   if (waiting.field === 'engineKey') {
-    if (!trimmed || trimmed.length < 10) {
+    // Убираем ВСЕ пробельные символы (переносы строк, пробелы) — Telegram может разбить длинный токен
+    const cleanToken = trimmed.replace(/\s+/g, '');
+    if (!cleanToken || cleanToken.length < 10) {
       waitingInput.delete(chatId);
       return { error: 'Ключ слишком короткий. Попробуй ещё раз через Настройки → Модель.' };
     }
     const engineId = waiting.engineId;
 
     // OAuth-токен подписки Claude (sk-ant-oat...) → отдельная переменная
-    if (engineId === 'claude' && trimmed.startsWith('sk-ant-oat')) {
-      console.log(`[settings] OAuth token received: ${trimmed.length} chars, starts: ${trimmed.slice(0, 15)}...`);
-      const ok = updateEnvVar('CLAUDE_CODE_OAUTH_TOKEN', trimmed);
+    if (engineId === 'claude' && cleanToken.startsWith('sk-ant-oat')) {
+      console.log(`[settings] OAuth token received: ${cleanToken.length} chars, starts: ${cleanToken.slice(0, 15)}...`);
+      const ok = updateEnvVar('CLAUDE_CODE_OAUTH_TOKEN', cleanToken);
       const ok2 = updateEnvVar('ENGINE', engineId);
       waitingInput.delete(chatId);
       if (ok && ok2) {
         return {
-          success: `Токен подписки Claude Max сохранён (${trimmed.length} символов). Переключаюсь на <b>Claude Code</b>. Перезапускаюсь...`,
+          success: `Токен подписки Claude Max сохранён (${cleanToken.length} символов). Переключаюсь на <b>Claude Code</b>. Перезапускаюсь...`,
           restart: true,
         };
       }
@@ -499,10 +501,10 @@ export function handleSettingsInput(chatId, text) {
     }
 
     // Обычный API-ключ — тоже логируем длину
-    console.log(`[settings] API key received: ${trimmed.length} chars`);
+    console.log(`[settings] API key received: ${cleanToken.length} chars`);
 
     // Обычный API-ключ
-    const ok = updateEnvFile(engineId, trimmed);
+    const ok = updateEnvFile(engineId, cleanToken);
     waitingInput.delete(chatId);
     if (ok) {
       return {

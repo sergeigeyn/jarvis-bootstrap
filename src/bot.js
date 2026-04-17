@@ -466,11 +466,16 @@ bot.on('message:document', async (ctx) => {
 
   // Если ждём ключ/токен — читаем содержимое файла как ключ
   const waiting = getWaitingInput(chatId);
-  if (waiting?.field === 'engineKey' && (ext === '.txt' || ext === '.env' || ext === '.key')) {
+  const textExts = ['.txt', '.env', '.key', '.rtf', '.text', '.cfg', '.conf'];
+  if (waiting?.field === 'engineKey' && textExts.includes(ext.toLowerCase())) {
     try {
       const filepath = await downloadFile(bot, doc.file_id, ext);
       const { readFileSync } = await import('fs');
-      const tokenContent = readFileSync(filepath, 'utf8').trim();
+      let tokenContent = readFileSync(filepath, 'utf8').trim();
+      // RTF — извлекаем чистый текст (убираем RTF-разметку)
+      if (ext.toLowerCase() === '.rtf') {
+        tokenContent = tokenContent.replace(/\{\\rtf[^}]*\}/g, '').replace(/\\[a-z]+\d*\s?/g, '').replace(/[{}]/g, '').trim();
+      }
       console.log(`[bot] token from file: ${tokenContent.length} chars, file: ${doc.file_name}`);
 
       const result = handleSettingsInput(chatId, tokenContent);
@@ -486,6 +491,36 @@ bot.on('message:document', async (ctx) => {
       await ctx.reply(`Ошибка чтения файла: ${err.message}`);
     }
     return;
+  }
+
+  // Автодетект: файл с токеном (token.txt, token.rtf, etc.) даже без waiting state
+  if (textExts.includes(ext.toLowerCase()) && /token|key|secret|oauth/i.test(doc.file_name || '')) {
+    try {
+      const filepath = await downloadFile(bot, doc.file_id, ext);
+      const { readFileSync } = await import('fs');
+      let content = readFileSync(filepath, 'utf8').trim();
+      if (ext.toLowerCase() === '.rtf') {
+        content = content.replace(/\{\\rtf[^}]*\}/g, '').replace(/\\[a-z]+\d*\s?/g, '').replace(/[{}]/g, '').trim();
+      }
+      const cleanContent = content.replace(/\s+/g, '');
+      if (/^sk-ant-/i.test(cleanContent) || /^sk-[a-zA-Z0-9_-]{20,}/.test(cleanContent)) {
+        console.log(`[bot] auto-detected token in file ${doc.file_name}: ${cleanContent.length} chars`);
+        const engineId = cleanContent.startsWith('sk-ant-') ? 'claude' : 'codex';
+        await ctx.reply(
+          `⚠️ <b>Обнаружен токен в файле!</b>\n\nСохраняю (${cleanContent.length} символов)...`,
+          { parse_mode: 'HTML' }
+        );
+        setWaitingInput(chatId, { field: 'engineKey', engineId });
+        const result = handleSettingsInput(chatId, cleanContent);
+        if (result?.success) {
+          await ctx.reply(result.success, { parse_mode: 'HTML' });
+          if (result.restart) setTimeout(() => process.exit(0), 1500);
+        } else if (result?.error) {
+          await ctx.reply(result.error);
+        }
+        return;
+      }
+    } catch { /* не токен — продолжаем как обычный файл */ }
   }
 
   try {
