@@ -473,17 +473,21 @@ export function handleSettingsInput(chatId, text) {
 
     // OAuth-токен подписки Claude (sk-ant-oat...) → отдельная переменная
     if (engineId === 'claude' && trimmed.startsWith('sk-ant-oat')) {
+      console.log(`[settings] OAuth token received: ${trimmed.length} chars, starts: ${trimmed.slice(0, 15)}...`);
       const ok = updateEnvVar('CLAUDE_CODE_OAUTH_TOKEN', trimmed);
       const ok2 = updateEnvVar('ENGINE', engineId);
       waitingInput.delete(chatId);
       if (ok && ok2) {
         return {
-          success: `Токен подписки Claude Max сохранён. Переключаюсь на <b>Claude Code</b>. Перезапускаюсь...`,
+          success: `Токен подписки Claude Max сохранён (${trimmed.length} символов). Переключаюсь на <b>Claude Code</b>. Перезапускаюсь...`,
           restart: true,
         };
       }
       return { error: 'Не удалось обновить .env.' };
     }
+
+    // Обычный API-ключ — тоже логируем длину
+    console.log(`[settings] API key received: ${trimmed.length} chars`);
 
     // Обычный API-ключ
     const ok = updateEnvFile(engineId, trimmed);
