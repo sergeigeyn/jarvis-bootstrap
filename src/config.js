@@ -26,10 +26,15 @@ const rawEngine = (process.env.ENGINE || 'claude').toLowerCase();
 const engine = SUPPORTED_ENGINES[rawEngine] ? rawEngine : 'claude';
 const keyEnv = SUPPORTED_ENGINES[engine];
 
+// Claude может авторизоваться через OAuth-токен подписки ИЛИ API-ключ
+const engineKey = engine === 'claude'
+  ? (process.env[keyEnv] || process.env.CLAUDE_CODE_OAUTH_TOKEN)
+  : process.env[keyEnv];
+
 export const config = {
   // Движок
   engine,
-  engineKey: process.env[keyEnv],
+  engineKey,
 
   // Обязательные
   botToken: process.env.BOT_TOKEN,

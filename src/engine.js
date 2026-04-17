@@ -15,11 +15,17 @@ const ENGINES = {
       args.push(prompt);
       return args;
     },
-    buildEnv: () => ({
-      ...process.env,
-      ANTHROPIC_API_KEY: config.engineKey,
-      HOME: config.home,
-    }),
+    buildEnv: () => {
+      const env = { ...process.env, HOME: config.home };
+      // OAuth-токен подписки или API-ключ
+      if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+        env.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+      }
+      if (process.env.ANTHROPIC_API_KEY) {
+        env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+      }
+      return env;
+    },
     install: 'npm install -g @anthropic-ai/claude-code',
     authEnv: 'ANTHROPIC_API_KEY',
     plans: 'Claude Max ($100/мес) или API credits',

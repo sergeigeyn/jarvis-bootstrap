@@ -26,37 +26,39 @@ const ENGINE_KEY_MAP = {
     env: 'ANTHROPIC_API_KEY',
     hint: 'Anthropic API Key (sk-ant-...)',
     guide:
-      `<b>Как получить ключ Claude Code:</b>\n\n` +
+      `<b>Подключение Claude Code:</b>\n\n` +
       `<b>Вариант A — подписка Max ($100/мес):</b>\n` +
       `1. Подключи Claude Max на claude.ai\n` +
-      `2. Зайди на сервер по SSH\n` +
-      `3. Запусти <code>claude /login</code>\n` +
-      `4. Скопируй ссылку → открой в браузере → войди\n` +
-      `5. Токен автоматически сохранится на сервере\n` +
-      `Ключ вводить не нужно.\n\n` +
-      `<b>Вариант B — API credits (по токенам):</b>\n` +
+      `2. Установи Claude Code на <b>своём</b> компе:\n` +
+      `   <code>npm install -g @anthropic-ai/claude-code</code>\n` +
+      `3. Запусти <code>claude setup-token</code>\n` +
+      `4. Откроется браузер → войди в аккаунт\n` +
+      `5. Токен появится в терминале — скопируй его\n` +
+      `6. Отправь токен сюда ↓\n\n` +
+      `<b>Вариант B — API credits (оплата за токены):</b>\n` +
       `1. Зайди на console.anthropic.com\n` +
       `2. Settings → API Keys → Create Key\n` +
-      `3. Пополни баланс (Settings → Billing)\n\n` +
-      `Если у тебя API key — отправь его сюда:`,
+      `3. Пополни баланс (Settings → Billing)\n` +
+      `4. Отправь ключ <code>sk-ant-...</code> сюда ↓`,
   },
   codex: {
     env: 'OPENAI_API_KEY',
     hint: 'OpenAI API Key (sk-...)',
     guide:
-      `<b>Как получить ключ Codex:</b>\n\n` +
+      `<b>Подключение Codex:</b>\n\n` +
       `<b>Вариант A — подписка Plus/Pro ($20-200/мес):</b>\n` +
-      `1. Подключи ChatGPT Plus или Pro на chatgpt.com\n` +
-      `2. Зайди на сервер по SSH\n` +
+      `1. Подключи ChatGPT Plus/Pro на chatgpt.com\n` +
+      `2. Установи Codex на <b>своём</b> компе:\n` +
+      `   <code>npm install -g @openai/codex</code>\n` +
       `3. Запусти <code>codex login</code>\n` +
-      `4. Скопируй ссылку → открой в браузере → войди\n` +
-      `5. Токен автоматически сохранится на сервере\n` +
-      `Ключ вводить не нужно.\n\n` +
-      `<b>Вариант B — API key (по токенам):</b>\n` +
+      `4. Откроется браузер → войди в аккаунт\n` +
+      `5. Ключ появится в <code>~/.codex/auth.json</code>\n` +
+      `6. Скопируй значение api_key и отправь сюда ↓\n\n` +
+      `<b>Вариант B — API key (оплата за токены):</b>\n` +
       `1. Зайди на platform.openai.com\n` +
       `2. API Keys → Create new secret key\n` +
-      `3. Пополни баланс (Settings → Billing)\n\n` +
-      `Если у тебя API key — отправь его сюда:`,
+      `3. Пополни баланс (Settings → Billing)\n` +
+      `4. Отправь ключ <code>sk-...</code> сюда ↓`,
   },
 };
 
@@ -138,6 +140,20 @@ function updateEnvFile(engineId, apiKey) {
     content += `\n${keyInfo.env}=${apiKey}`;
   }
 
+  writeFileSync(envPath, content);
+  return true;
+}
+
+function updateEnvVar(key, value) {
+  const envPath = join(config.dataDir, '.env');
+  if (!existsSync(envPath)) return false;
+
+  let content = readFileSync(envPath, 'utf8');
+  if (content.match(new RegExp(`^${key}=.*`, 'm'))) {
+    content = content.replace(new RegExp(`^${key}=.*`, 'm'), `${key}=${value}`);
+  } else {
+    content += `\n${key}=${value}`;
+  }
   writeFileSync(envPath, content);
   return true;
 }
@@ -444,6 +460,22 @@ export function handleSettingsInput(chatId, text) {
       return { error: 'Ключ слишком короткий. Попробуй ещё раз через Настройки → Модель.' };
     }
     const engineId = waiting.engineId;
+
+    // OAuth-токен подписки Claude (sk-ant-oat...) → отдельная переменная
+    if (engineId === 'claude' && trimmed.startsWith('sk-ant-oat')) {
+      const ok = updateEnvVar('CLAUDE_CODE_OAUTH_TOKEN', trimmed);
+      const ok2 = updateEnvVar('ENGINE', engineId);
+      waitingInput.delete(chatId);
+      if (ok && ok2) {
+        return {
+          success: `Токен подписки Claude Max сохранён. Переключаюсь на <b>Claude Code</b>. Перезапускаюсь...`,
+          restart: true,
+        };
+      }
+      return { error: 'Не удалось обновить .env.' };
+    }
+
+    // Обычный API-ключ
     const ok = updateEnvFile(engineId, trimmed);
     waitingInput.delete(chatId);
     if (ok) {
