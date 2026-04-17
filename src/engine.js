@@ -42,23 +42,6 @@ const ENGINES = {
     plans: 'ChatGPT Plus ($20/мес) или API key',
   },
 
-  gemini: {
-    name: 'Gemini CLI',
-    bin: 'gemini',
-    buildArgs: (prompt) => {
-      // -p = non-interactive (headless) mode
-      return ['-p', prompt];
-    },
-    buildEnv: () => ({
-      ...process.env,
-      GEMINI_API_KEY: config.engineKey,
-      GOOGLE_API_KEY: config.engineKey,
-      HOME: config.home,
-    }),
-    install: 'npm install -g @google/gemini-cli',
-    authEnv: 'GEMINI_API_KEY',
-    plans: 'Бесплатно (Google аккаунт, 1000 req/день)',
-  },
 };
 
 export function getEngineInfo(engineId) {

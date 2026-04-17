@@ -24,7 +24,6 @@ export function clearWaitingInput(chatId) {
 const ENGINE_KEY_MAP = {
   claude: { env: 'ANTHROPIC_API_KEY', hint: 'Anthropic API Key (sk-ant-...)' },
   codex:  { env: 'OPENAI_API_KEY', hint: 'OpenAI API Key (sk-...)' },
-  gemini: { env: 'GEMINI_API_KEY', hint: 'Gemini API Key (AIza...)' },
 };
 
 // ── Режим работы ──
