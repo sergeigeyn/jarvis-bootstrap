@@ -26,39 +26,49 @@ const ENGINE_KEY_MAP = {
     env: 'ANTHROPIC_API_KEY',
     hint: 'Anthropic API Key (sk-ant-...)',
     guide:
-      `<b>Подключение Claude Code:</b>\n\n` +
+      `<b>Подключение Claude Code</b>\n\n` +
       `<b>Вариант A — подписка Max ($100/мес):</b>\n` +
-      `1. Подключи Claude Max на claude.ai\n` +
-      `2. Установи Claude Code на <b>своём</b> компе:\n` +
+      `1. Оформи подписку Claude Max на claude.ai\n` +
+      `2. Открой <b>Терминал</b> на своём компе:\n` +
+      `   Mac: Cmd+Пробел → Terminal\n` +
+      `   Win: Win+R → <code>cmd</code>\n` +
+      `3. Если Claude Code ещё не установлен, введи:\n` +
       `   <code>npm install -g @anthropic-ai/claude-code</code>\n` +
-      `3. Запусти <code>claude setup-token</code>\n` +
-      `4. Откроется браузер → войди в аккаунт\n` +
-      `5. Токен появится в терминале — скопируй его\n` +
-      `6. Отправь токен сюда ↓\n\n` +
+      `4. Затем введи в терминале:\n` +
+      `   <code>claude setup-token</code>\n` +
+      `5. Откроется браузер — войди в свой аккаунт Anthropic\n` +
+      `6. Вернись в терминал — там появится токен. Скопируй его\n` +
+      `7. Вставь токен сюда ↓\n\n` +
       `<b>Вариант B — API credits (оплата за токены):</b>\n` +
       `1. Зайди на console.anthropic.com\n` +
       `2. Settings → API Keys → Create Key\n` +
       `3. Пополни баланс (Settings → Billing)\n` +
-      `4. Отправь ключ <code>sk-ant-...</code> сюда ↓`,
+      `4. Вставь ключ <code>sk-ant-...</code> сюда ↓`,
   },
   codex: {
     env: 'OPENAI_API_KEY',
     hint: 'OpenAI API Key (sk-...)',
     guide:
-      `<b>Подключение Codex:</b>\n\n` +
+      `<b>Подключение Codex</b>\n\n` +
       `<b>Вариант A — подписка Plus/Pro ($20-200/мес):</b>\n` +
-      `1. Подключи ChatGPT Plus/Pro на chatgpt.com\n` +
-      `2. Установи Codex на <b>своём</b> компе:\n` +
+      `1. Оформи подписку ChatGPT Plus/Pro на chatgpt.com\n` +
+      `2. Открой <b>Терминал</b> на своём компе:\n` +
+      `   Mac: Cmd+Пробел → Terminal\n` +
+      `   Win: Win+R → <code>cmd</code>\n` +
+      `3. Если Codex ещё не установлен, введи:\n` +
       `   <code>npm install -g @openai/codex</code>\n` +
-      `3. Запусти <code>codex login</code>\n` +
-      `4. Откроется браузер → войди в аккаунт\n` +
-      `5. Ключ появится в <code>~/.codex/auth.json</code>\n` +
-      `6. Скопируй значение api_key и отправь сюда ↓\n\n` +
+      `4. Затем введи в терминале:\n` +
+      `   <code>codex login</code>\n` +
+      `5. Откроется браузер — войди в свой аккаунт OpenAI\n` +
+      `6. Готово. Открой файл:\n` +
+      `   <code>~/.codex/auth.json</code>\n` +
+      `   Скопируй значение api_key\n` +
+      `7. Вставь ключ сюда ↓\n\n` +
       `<b>Вариант B — API key (оплата за токены):</b>\n` +
       `1. Зайди на platform.openai.com\n` +
       `2. API Keys → Create new secret key\n` +
       `3. Пополни баланс (Settings → Billing)\n` +
-      `4. Отправь ключ <code>sk-...</code> сюда ↓`,
+      `4. Вставь ключ <code>sk-...</code> сюда ↓`,
   },
 };
 
