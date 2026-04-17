@@ -262,12 +262,16 @@ bot.on('message:text', async (ctx) => {
     return;
   }
 
-  // 2. Settings — ждём ввод (имя владельца / агента)
+  // 2. Settings — ждём ввод (имя владельца / агента / ключ движка)
   const waiting = getWaitingInput(chatId);
   if (waiting) {
     const result = handleSettingsInput(chatId, text);
     if (result?.success) {
       await ctx.reply(result.success, { parse_mode: 'HTML' });
+      // Смена движка — перезапуск через systemd
+      if (result.restart) {
+        setTimeout(() => process.exit(0), 1500);
+      }
     } else if (result?.error) {
       await ctx.reply(result.error);
     }

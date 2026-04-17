@@ -104,8 +104,29 @@ export function maskSecrets(text) {
   return result;
 }
 
+// ── Markdown → HTML для Telegram ──
+
+function mdToHtml(text) {
+  let result = text;
+  // **bold** → <b>bold</b>
+  result = result.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  // *italic* → <i>italic</i> (но не внутри уже конвертированных тегов)
+  result = result.replace(/(?<![<\w])(\*)(?!\*)(.+?)\1(?![>*])/g, '<i>$2</i>');
+  // `code` → <code>code</code>
+  result = result.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // ```block``` → <pre>block</pre>
+  result = result.replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre>$1</pre>');
+  // ### heading → <b>heading</b>
+  result = result.replace(/^#{1,3}\s+(.+)$/gm, '<b>$1</b>');
+  // - list → • list
+  result = result.replace(/^[\s]*[-*]\s+/gm, '• ');
+  return result;
+}
+
 // ── Полная проверка ответа ──
 
 export function processResponse(text) {
-  return maskSecrets(text);
+  let result = maskSecrets(text);
+  result = mdToHtml(result);
+  return result;
 }
