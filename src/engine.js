@@ -11,6 +11,7 @@ const ENGINES = {
     bin: 'claude',
     buildArgs: (prompt, sessionId) => {
       const args = ['--print', '--output-format', 'text'];
+      if (process.env.CLAUDE_MODEL) args.push('--model', process.env.CLAUDE_MODEL);
       if (sessionId) args.push('--session', sessionId);
       args.push(prompt);
       return args;

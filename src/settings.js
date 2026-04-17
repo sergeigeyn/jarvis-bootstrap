@@ -23,6 +23,37 @@ export function setWaitingInput(chatId, state) {
   waitingInput.set(chatId, state);
 }
 
+// ── Каталог сервисов (человеческие названия для env vars) ──
+
+const SERVICE_CATALOG = [
+  { id: 'openrouter', label: 'OpenRouter (модели AI)', vars: ['OPENROUTER_API_KEY'] },
+  { id: 'github', label: 'GitHub (репозитории)', vars: ['GITHUB_TOKEN'] },
+  { id: 'railway', label: 'Railway (бэкенд)', vars: ['RAILWAY_TOKEN', 'RAILWAY_PROJECT_ID'] },
+  { id: 'vercel', label: 'Vercel (фронтенд)', vars: ['VERCEL_TOKEN', 'VERCEL_PROJECT_ID'] },
+  { id: 'deepgram', label: 'Deepgram (голосовые)', vars: ['DEEPGRAM_API_KEY'] },
+  { id: 'voyage', label: 'Voyage AI (семантический поиск)', vars: ['VOYAGE_API_KEY'] },
+  { id: 'serper', label: 'Serper (веб-поиск)', vars: ['SERPER_API_KEY'] },
+  { id: 'falai', label: 'FALAI', vars: ['FALAI'] },
+  { id: 'apify', label: 'APIFY', vars: ['APIFY'] },
+  { id: 'trustmrr', label: 'TRUSTMRR', vars: ['TRUSTMRR'] },
+  { id: 'producthunt', label: 'PRODUCTHUNT_TOKEN', vars: ['PRODUCTHUNT_TOKEN'] },
+  { id: 'kwork', label: 'BOT_TOKEN_KWORK', vars: ['BOT_TOKEN_KWORK'] },
+  { id: 'n8n', label: 'n8n (автоматизация)', vars: ['N8N_API_KEY', 'N8N_API_URL'] },
+  { id: 'contenzavod', label: 'Контент Фабрика', vars: ['BOT_TOKEN_CONTENZAVOD'], desc: 'Контент Фабрика Бот' },
+  { id: 'helper_aishnik', label: 'Аишник Хелпер', vars: ['BOT_TOKEN_HELPER_AISHNIK'], desc: 'Агент для развертывания агентов' },
+];
+
+const SUGGESTED_SERVICES = [
+  { id: 'twitter', label: 'X/Twitter (мониторинг)', vars: ['X_API_KEY'], hint: 'API ключ для мониторинга X/Twitter' },
+  { id: 'supabase', label: 'Supabase (база данных)', vars: ['SUPABASE_ANON_KEY'], hint: 'Anon Key из настроек проекта Supabase' },
+];
+
+// Системные переменные — показываем с 🔒, не дaём редактировать
+const SYSTEM_DISPLAY_VARS = [
+  'BOT_TOKEN', 'IIA_WORKSPACE_DIR', 'IIA_SESSION_DIR', 'NODE_ENV',
+  'SYNC_KEY', 'SYNC_URL', 'ADMIN_ID', 'CLAUDE_CODE_OAUTH_TOKEN',
+];
+
 // ── Карта ключей по движкам ──
 
 const ENGINE_KEY_MAP = {
@@ -84,6 +115,23 @@ const ENGINE_KEY_MAP = {
   },
 };
 
+// ── Модели ──
+
+const CLAUDE_MODELS = [
+  { id: 'opus', name: 'Opus 4.6', modelId: 'claude-opus-4-6', emoji: '🧠' },
+  { id: 'sonnet', name: 'Sonnet 4.6', modelId: 'claude-sonnet-4-6', emoji: '⚡' },
+  { id: 'haiku', name: 'Haiku 4.5', modelId: 'claude-haiku-4-5-20251001', emoji: '🍃' },
+];
+
+function getCurrentModel() {
+  const modelEnv = process.env.CLAUDE_MODEL;
+  if (modelEnv) {
+    const found = CLAUDE_MODELS.find(m => m.modelId === modelEnv || m.id === modelEnv);
+    if (found) return found;
+  }
+  return CLAUDE_MODELS[0]; // Opus по умолчанию
+}
+
 // ── Режим работы ──
 
 const MODES = ['авто', 'ручной', 'plan'];
@@ -96,9 +144,8 @@ let timezone = 'Moscow';
 // ── Текст карточки настроек (как в reference) ──
 
 export function getSettingsText() {
-  const engine = getEngineInfo(config.engine);
-  const connected = config.engineKey ? '✅' : '❌ не подключён';
-  const modelStatus = config.engineKey ? engine.name : `${engine.name} (${connected})`;
+  const model = getCurrentModel();
+  const modelStatus = config.engineKey ? model.name : `${model.name} (❌ не подключён)`;
   return (
     `⚙️ <b>Настройки</b>\n\n` +
     `📡 Подключение: <b>${getConnectionType()}</b>\n` +
@@ -119,7 +166,7 @@ function getConnectionType() {
 // ── Главная клавиатура настроек ──
 
 export function buildSettingsKeyboard() {
-  const engine = getEngineInfo(config.engine);
+  const model = getCurrentModel();
   return new InlineKeyboard()
     .text('📡 Подключение: подписка', 'settings:connection')
     .row()
@@ -127,7 +174,7 @@ export function buildSettingsKeyboard() {
     .row()
     .text(`🔒 Режим: 😈 ${currentMode}`, 'settings:mode')
     .row()
-    .text(`🧠 Модель: ${engine.name}${config.engineKey ? '' : ' ❌'}`, 'settings:engine')
+    .text(`🧠 Модель: ${model.name}`, 'settings:model')
     .row()
     .text('💰 Лимит: без ограничений', 'settings:limit')
     .row()
@@ -182,8 +229,13 @@ function updateEnvVar(key, value) {
 
 // ── Переменные окружения: UI ──
 
-// Системные переменные — не показываем в списке пользовательских
-const SYSTEM_VARS = new Set(['ENGINE', 'BOT_TOKEN', 'AGENT_NAME', 'ADMIN_ID', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
+// Все системные переменные — не показываем в пользовательском списке
+const SYSTEM_VARS = new Set([
+  'ENGINE', 'BOT_TOKEN', 'AGENT_NAME', 'ADMIN_ID',
+  'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN',
+  'IIA_WORKSPACE_DIR', 'IIA_SESSION_DIR', 'NODE_ENV',
+  'SYNC_KEY', 'SYNC_URL', 'CLAUDE_MODEL',
+]);
 
 function getUserEnvVars() {
   const envPath = join(config.dataDir, '.env');
@@ -212,31 +264,83 @@ function deleteEnvVar(key) {
   delete process.env[key];
 }
 
+function maskValue(val) {
+  return val.length > 4 ? '…' + val.slice(-4) : '••••';
+}
+
 export function buildEnvVarsMessage() {
-  const vars = getUserEnvVars();
+  const userVars = getUserEnvVars();
+  const catalogVarNames = new Set(SERVICE_CATALOG.flatMap(s => s.vars));
   let text = `🔑 <b>Переменные окружения</b>\n\n`;
 
-  if (vars.length === 0) {
-    text += `Пусто. Добавь переменные — агент сможет использовать их для работы с внешними сервисами.\n\n`;
-    text += `Примеры: <code>GITHUB_TOKEN</code>, <code>SERPER_API_KEY</code>, <code>DEEPGRAM_API_KEY</code>`;
-  } else {
-    for (const v of vars) {
-      const masked = v.value.length > 4 ? '…' + v.value.slice(-4) : '••••';
-      text += `<code>${v.key}</code> = ${masked}\n`;
+  // ── [системные] ──
+  const sysEntries = [];
+  for (const key of SYSTEM_DISPLAY_VARS) {
+    const val = process.env[key];
+    if (val) sysEntries.push({ key, value: val });
+  }
+  if (sysEntries.length > 0) {
+    text += `[системные]\n`;
+    for (const v of sysEntries) {
+      text += `${v.key}: ${maskValue(v.value)} 🔒\n`;
     }
-    text += `\n${vars.length} переменных. Агент использует их через <code>$ИМЯ</code> в shell.`;
+    text += `\n`;
   }
 
+  // ── [подключены] ──
+  if (userVars.length > 0) {
+    text += `[подключены]\n`;
+    // Сервисы из каталога
+    for (const svc of SERVICE_CATALOG) {
+      const connected = svc.vars.filter(v => userVars.some(uv => uv.key === v));
+      if (connected.length === 0) continue;
+
+      if (svc.vars.length > 1) {
+        // Мульти-ключевой сервис: "Railway: 1 из 2 ключей"
+        text += `${svc.label.split(' (')[0]}: ${connected.length} из ${svc.vars.length} ключей\n`;
+      } else {
+        const v = userVars.find(uv => uv.key === svc.vars[0]);
+        text += `${svc.vars[0]}: ${maskValue(v.value)}\n`;
+      }
+      if (svc.desc) {
+        text += `  └ <i>${svc.desc}</i>\n`;
+      }
+    }
+    // Кастомные переменные (не в каталоге)
+    const customVars = userVars.filter(v => !catalogVarNames.has(v.key));
+    for (const v of customVars) {
+      text += `${v.key}: ${maskValue(v.value)}\n`;
+    }
+  } else {
+    text += `Пусто. Добавь переменные — агент сможет использовать их для работы с внешними сервисами.`;
+  }
+
+  // ── Клавиатура ──
   const kb = new InlineKeyboard();
 
-  // Кнопки удаления для каждой переменной (по 2 в ряд)
-  for (let i = 0; i < vars.length; i++) {
-    kb.text(`❌ ${vars[i].key}`, `settings:env_del:${vars[i].key}`);
-    if ((i + 1) % 2 === 0) kb.row();
+  // Подключённые сервисы из каталога
+  for (const svc of SERVICE_CATALOG) {
+    const connected = svc.vars.filter(v => process.env[v]);
+    if (connected.length > 0) {
+      kb.text(`${svc.label} ☑️`, `settings:svc:${svc.id}`).row();
+    }
   }
-  if (vars.length % 2 !== 0) kb.row();
 
-  kb.text('➕ Добавить переменную', 'settings:env_add').row();
+  // Кастомные переменные (не в каталоге) — показываем с ☑️
+  const customVars = userVars.filter(v => !catalogVarNames.has(v.key));
+  for (const v of customVars) {
+    kb.text(`${v.key} ☑️`, `settings:svc_custom:${v.key}`).row();
+  }
+
+  // Предложения — сервисы, которые ещё не подключены
+  for (const svc of SUGGESTED_SERVICES) {
+    const connected = svc.vars.some(v => process.env[v]);
+    if (!connected) {
+      kb.text(`➕ ${svc.label}`, `settings:svc_add:${svc.id}`).row();
+    }
+  }
+
+  kb.text('✏️ ВПИСАТЬ СВОЮ', 'settings:env_add').row();
   kb.text('« Назад', 'settings:back');
 
   return [text, { parse_mode: 'HTML', reply_markup: kb }];
@@ -250,13 +354,22 @@ export async function handleSettingsCallback(ctx) {
 
   // ── Подключение ──
   if (data === 'settings:connection') {
+    const model = getCurrentModel();
+    const connType = getConnectionType();
+    const engine = getEngineInfo(config.engine);
+    let text = `<b>📡 Подключение</b>\n\n`;
+    text += `Тип: <b>${connType}</b>\n`;
+    text += `Движок: <b>${engine.name}</b>\n`;
+    text += `Модель: <b>${model.emoji} ${model.name}</b>\n`;
+    text += `Статус: ${config.engineKey ? '✅ подключён' : '❌ не подключён'}\n\n`;
+    if (!config.engineKey) {
+      text += `Для подключения используй кнопку «Модель» в настройках.`;
+    }
     await ctx.answerCallbackQuery();
-    await ctx.reply(
-      `<b>Подключение</b>\n\n` +
-      `Текущее: <b>${getConnectionType()}</b>\n\n` +
-      `Для смены движка используй кнопку «Модель» в настройках.`,
-      { parse_mode: 'HTML' }
-    );
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard().text('« Назад', 'settings:back'),
+    });
     return;
   }
 
@@ -271,8 +384,89 @@ export async function handleSettingsCallback(ctx) {
     waitingInput.set(chatId, { field: 'envVarName' });
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      `Введи <b>имя</b> переменной:\n\n` +
-      `Например: <code>GITHUB_TOKEN</code>, <code>SERPER_API_KEY</code>, <code>DEEPGRAM_API_KEY</code>`,
+      `Введите имя переменной (например <code>SERPER_API_KEY</code>):`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text('❌ Отмена', 'settings:env_vars'),
+      }
+    );
+    return;
+  }
+
+  // ── Клик по подключённому сервису из каталога ──
+  if (data.startsWith('settings:svc:')) {
+    const svcId = data.replace('settings:svc:', '');
+    const svc = SERVICE_CATALOG.find(s => s.id === svcId);
+    if (!svc) { await ctx.answerCallbackQuery({ text: 'Неизвестный сервис' }); return; }
+
+    const vars = getUserEnvVars();
+    const kb = new InlineKeyboard();
+    let text = `<b>${svc.label}</b>\n`;
+    if (svc.desc) text += `<i>${svc.desc}</i>\n`;
+    text += `\n`;
+
+    for (const varName of svc.vars) {
+      const v = vars.find(uv => uv.key === varName);
+      if (v) {
+        text += `<code>${varName}</code> = ${maskValue(v.value)} ✅\n`;
+        kb.text(`❌ ${varName}`, `settings:env_del:${varName}`).row();
+      } else {
+        text += `<code>${varName}</code> — не задана\n`;
+        kb.text(`➕ ${varName}`, `settings:svc_var_add:${varName}`).row();
+      }
+    }
+
+    kb.text('« Назад', 'settings:env_vars');
+    await ctx.answerCallbackQuery();
+    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
+    return;
+  }
+
+  // ── Клик по кастомной переменной ──
+  if (data.startsWith('settings:svc_custom:')) {
+    const varName = data.replace('settings:svc_custom:', '');
+    const vars = getUserEnvVars();
+    const v = vars.find(uv => uv.key === varName);
+    if (!v) { await ctx.answerCallbackQuery({ text: 'Переменная не найдена' }); return; }
+
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `<code>${varName}</code> = ${maskValue(v.value)}`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text(`❌ Удалить`, `settings:env_del:${varName}`)
+          .text('« Назад', 'settings:env_vars'),
+      }
+    );
+    return;
+  }
+
+  // ── Добавить предложенный сервис ──
+  if (data.startsWith('settings:svc_add:')) {
+    const svcId = data.replace('settings:svc_add:', '');
+    const svc = SUGGESTED_SERVICES.find(s => s.id === svcId);
+    if (!svc) { await ctx.answerCallbackQuery({ text: 'Неизвестный сервис' }); return; }
+
+    const varName = svc.vars[0];
+    waitingInput.set(chatId, { field: 'envVarValue', varName });
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `<b>${svc.label}</b>\n\n` +
+      `Введи значение для <code>${varName}</code>:` +
+      (svc.hint ? `\n\n💡 ${svc.hint}` : ''),
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  // ── Добавить конкретную переменную сервиса ──
+  if (data.startsWith('settings:svc_var_add:')) {
+    const varName = data.replace('settings:svc_var_add:', '');
+    waitingInput.set(chatId, { field: 'envVarValue', varName });
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `Введи значение для <code>${varName}</code>:`,
       { parse_mode: 'HTML' }
     );
     return;
@@ -332,7 +526,46 @@ export async function handleSettingsCallback(ctx) {
     return;
   }
 
-  // ── Движок/Модель ──
+  // ── Модель ──
+  if (data === 'settings:model') {
+    const current = getCurrentModel();
+    const kb = new InlineKeyboard();
+    for (const m of CLAUDE_MODELS) {
+      const mark = m.id === current.id ? ' ✓' : '';
+      kb.text(`${m.emoji} ${m.name}${mark}`, `settings:model_pick:${m.id}`).row();
+    }
+    // Переключение движка — отдельно
+    kb.text('🔧 Сменить движок', 'settings:engine').row();
+    kb.text('« Назад', 'settings:back');
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `<b>Модель</b>\n\n` +
+      `Текущая: <b>${current.emoji} ${current.name}</b>\n\n` +
+      CLAUDE_MODELS.map(m =>
+        `${m.id === current.id ? '→ ' : '  '}${m.emoji} <b>${m.name}</b>`
+      ).join('\n'),
+      { parse_mode: 'HTML', reply_markup: kb }
+    );
+    return;
+  }
+
+  if (data.startsWith('settings:model_pick:')) {
+    const modelId = data.split(':')[2];
+    const model = CLAUDE_MODELS.find(m => m.id === modelId);
+    if (!model) { await ctx.answerCallbackQuery({ text: 'Неизвестная модель' }); return; }
+
+    updateEnvVar('CLAUDE_MODEL', model.modelId);
+    process.env.CLAUDE_MODEL = model.modelId;
+    await ctx.answerCallbackQuery({ text: `Модель: ${model.name}` });
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(getSettingsText(), {
+      parse_mode: 'HTML',
+      reply_markup: buildSettingsKeyboard(),
+    });
+    return;
+  }
+
+  // ── Движок (под-меню модели) ──
   if (data === 'settings:engine') {
     const current = config.engine;
     const kb = new InlineKeyboard();
@@ -341,10 +574,10 @@ export async function handleSettingsCallback(ctx) {
       const mark = e.id === current ? ' ✓' : '';
       kb.text(`${e.name}${mark}`, `settings:engine_pick:${e.id}`);
     }
-    kb.row().text('« Назад', 'settings:back');
+    kb.row().text('« Назад', 'settings:model');
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      `<b>Выбери движок</b>\n\n` +
+      `<b>Движок</b>\n\n` +
       `Текущий: <b>${getEngineInfo(current).name}</b>\n\n` +
       engines.map(e => `${e.id === current ? '→ ' : '  '}<b>${e.name}</b> — ${e.plans}`).join('\n'),
       { parse_mode: 'HTML', reply_markup: kb }
@@ -363,7 +596,6 @@ export async function handleSettingsCallback(ctx) {
       await ctx.answerCallbackQuery({ text: 'Уже используется' });
       return;
     }
-    // Проверяем — может ключ уже есть в .env
     const existingKey = process.env[keyInfo.env];
     if (existingKey) {
       const ok = updateEnvFile(engineId, existingKey);
@@ -377,7 +609,6 @@ export async function handleSettingsCallback(ctx) {
         return;
       }
     }
-    // Ключа нет — показываем инструкцию
     waitingInput.set(chatId, { field: 'engineKey', engineId });
     await ctx.answerCallbackQuery();
     await ctx.reply(keyInfo.guide, { parse_mode: 'HTML' });
@@ -388,10 +619,14 @@ export async function handleSettingsCallback(ctx) {
   if (data === 'settings:limit') {
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      `<b>Лимит расходов</b>\n\n` +
-      `Текущий: <b>без ограничений</b>\n\n` +
-      `Функция лимитов пока в разработке.`,
-      { parse_mode: 'HTML' }
+      `<b>💰 Лимит расходов</b>\n\n` +
+      `Текущий: <b>без ограничений</b>\n` +
+      `Сегодня: <b>$0.00</b>\n\n` +
+      `Настройка лимитов пока в разработке. Сейчас расходы не ограничены.`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text('« Назад', 'settings:back'),
+      }
     );
     return;
   }
