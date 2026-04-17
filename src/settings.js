@@ -19,6 +19,10 @@ export function clearWaitingInput(chatId) {
   waitingInput.delete(chatId);
 }
 
+export function setWaitingInput(chatId, state) {
+  waitingInput.set(chatId, state);
+}
+
 // ── Карта ключей по движкам ──
 
 const ENGINE_KEY_MAP = {

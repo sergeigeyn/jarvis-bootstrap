@@ -14,7 +14,7 @@ import {
 } from './onboarding.js';
 import {
   buildSettingsKeyboard, getSettingsText, handleSettingsCallback,
-  getWaitingInput, clearWaitingInput, handleSettingsInput,
+  getWaitingInput, setWaitingInput, clearWaitingInput, handleSettingsInput,
 } from './settings.js';
 import { buildMainMenuKeyboard, getMainMenuText, getReturningMenuText } from './menu.js';
 import { buildProjectsKeyboard, getProjectsText, handleProjectsCallback } from './projects.js';
@@ -375,7 +375,49 @@ bot.on('message:text', async (ctx) => {
     return;
   }
 
-  // 3. Обычное сообщение → engine
+  // 3. Автодетект токенов/ключей — не отправлять в движок!
+  const trimmed = text.trim().replace(/^[`§'"]+|[`§'"]+$/g, '');
+  const looksLikeToken = /^sk-ant-/i.test(trimmed) || /^sk-[a-zA-Z0-9_-]{20,}/.test(trimmed);
+
+  if (looksLikeToken) {
+    // Извлечь из code entity если есть
+    let tokenText = trimmed;
+    if (ctx.message.entities) {
+      const codeEntity = ctx.message.entities.find(e => e.type === 'code' || e.type === 'pre');
+      if (codeEntity) {
+        tokenText = text.substring(codeEntity.offset, codeEntity.offset + codeEntity.length).trim();
+      }
+    }
+
+    console.log(`[bot] auto-detected token: ${tokenText.length} chars, starts: ${tokenText.slice(0, 15)}...`);
+
+    // Предупреждение безопасности
+    await ctx.reply(
+      `⚠️ <b>Обнаружен токен/ключ!</b>\n\n` +
+      `Не отправляй секретные данные в чат — это небезопасно.\n` +
+      `Лучше: /settings → Модель → выбери движок → следуй инструкции.\n\n` +
+      `Но раз уже отправил — сохраняю (${tokenText.length} символов)...`,
+      { parse_mode: 'HTML' }
+    );
+
+    // Определяем движок по префиксу
+    const engineId = tokenText.startsWith('sk-ant-') ? 'claude' : 'codex';
+
+    // Прогоняем через handleSettingsInput с нужным состоянием
+    setWaitingInput(chatId, { field: 'engineKey', engineId });
+    const result = handleSettingsInput(chatId, tokenText);
+    if (result?.success) {
+      await ctx.reply(result.success, { parse_mode: 'HTML' });
+      if (result.restart) {
+        setTimeout(() => process.exit(0), 1500);
+      }
+    } else if (result?.error) {
+      await ctx.reply(result.error);
+    }
+    return;
+  }
+
+  // 4. Обычное сообщение → engine
   await handleMessage(ctx, text);
 });
 
