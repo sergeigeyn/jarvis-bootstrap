@@ -104,6 +104,33 @@ export function maskSecrets(text) {
   return result;
 }
 
+// ── Детект секретов во входящих сообщениях ──
+
+const SENSITIVE_PATTERNS = [
+  { pattern: /sk-ant-oat[a-zA-Z0-9_-]{20,}/, type: 'engine_key', engine: 'claude', name: 'Claude OAuth токен' },
+  { pattern: /sk-ant-api[a-zA-Z0-9_-]{20,}/, type: 'engine_key', engine: 'claude', name: 'Anthropic API ключ' },
+  { pattern: /sk-[a-zA-Z0-9]{20,}/, type: 'engine_key', engine: 'codex', name: 'OpenAI API ключ' },
+  { pattern: /ghp_[a-zA-Z0-9]{36,}/, type: 'secret', name: 'GitHub Personal Access Token' },
+  { pattern: /gho_[a-zA-Z0-9]{36,}/, type: 'secret', name: 'GitHub OAuth Token' },
+  { pattern: /github_pat_[a-zA-Z0-9_]{22,}/, type: 'secret', name: 'GitHub Fine-grained Token' },
+  { pattern: /xoxb-[a-zA-Z0-9-]{20,}/, type: 'secret', name: 'Slack Bot Token' },
+  { pattern: /xoxp-[a-zA-Z0-9-]{20,}/, type: 'secret', name: 'Slack User Token' },
+  { pattern: /AKIA[A-Z0-9]{16}/, type: 'secret', name: 'AWS Access Key' },
+  { pattern: /eyJ[a-zA-Z0-9_-]{50,}\.[a-zA-Z0-9_-]{50,}/, type: 'secret', name: 'JWT токен' },
+  { pattern: /-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----/, type: 'secret', name: 'Приватный ключ' },
+];
+
+export function detectSensitiveInput(text) {
+  const clean = text.trim().replace(/^[`§'"]+|[`§'"]+$/g, '');
+  for (const rule of SENSITIVE_PATTERNS) {
+    const match = clean.match(rule.pattern);
+    if (match) {
+      return { type: rule.type, engine: rule.engine || null, name: rule.name, value: match[0] };
+    }
+  }
+  return null;
+}
+
 // ── Markdown → HTML для Telegram ──
 
 function mdToHtml(text) {

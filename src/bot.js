@@ -4,7 +4,7 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import { config } from './config.js';
 import { getSession, killSession, getEngineInfo } from './engine.js';
 import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './media.js';
-import { processResponse } from './hooks.js';
+import { processResponse, detectSensitiveInput } from './hooks.js';
 import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
 import { startScheduler } from './scheduler.js';
 import {
@@ -375,44 +375,49 @@ bot.on('message:text', async (ctx) => {
     return;
   }
 
-  // 3. Автодетект токенов/ключей — не отправлять в движок!
-  const trimmed = text.trim().replace(/^[`§'"]+|[`§'"]+$/g, '');
-  const looksLikeToken = /^sk-ant-/i.test(trimmed) || /^sk-[a-zA-Z0-9_-]{20,}/.test(trimmed);
+  // 3. Автодетект секретов — не отправлять в движок!
+  const detected = detectSensitiveInput(text);
 
-  if (looksLikeToken) {
+  if (detected) {
     // Извлечь из code entity если есть
-    let tokenText = trimmed;
+    let tokenText = detected.value;
     if (ctx.message.entities) {
       const codeEntity = ctx.message.entities.find(e => e.type === 'code' || e.type === 'pre');
       if (codeEntity) {
-        tokenText = text.substring(codeEntity.offset, codeEntity.offset + codeEntity.length).trim();
+        const extracted = text.substring(codeEntity.offset, codeEntity.offset + codeEntity.length).trim();
+        if (extracted.length >= tokenText.length) tokenText = extracted;
       }
     }
 
-    console.log(`[bot] auto-detected token: ${tokenText.length} chars, starts: ${tokenText.slice(0, 15)}...`);
+    console.log(`[bot] detected sensitive: ${detected.name}, ${tokenText.length} chars`);
 
-    // Предупреждение безопасности
-    await ctx.reply(
-      `⚠️ <b>Обнаружен токен/ключ!</b>\n\n` +
-      `Не отправляй секретные данные в чат — это небезопасно.\n` +
-      `Лучше: /settings → Модель → выбери движок → следуй инструкции.\n\n` +
-      `Но раз уже отправил — сохраняю (${tokenText.length} символов)...`,
-      { parse_mode: 'HTML' }
-    );
+    if (detected.type === 'engine_key') {
+      // Ключ движка — предупреждение + сохранение
+      await ctx.reply(
+        `🔐 <b>Обнаружен ${detected.name}</b>\n\n` +
+        `Не отправляй секретные данные в чат — это небезопасно. ` +
+        `В следующий раз используй /settings → Модель.\n\n` +
+        `Сохраняю (${tokenText.length} символов)...`,
+        { parse_mode: 'HTML' }
+      );
 
-    // Определяем движок по префиксу
-    const engineId = tokenText.startsWith('sk-ant-') ? 'claude' : 'codex';
-
-    // Прогоняем через handleSettingsInput с нужным состоянием
-    setWaitingInput(chatId, { field: 'engineKey', engineId });
-    const result = handleSettingsInput(chatId, tokenText);
-    if (result?.success) {
-      await ctx.reply(result.success, { parse_mode: 'HTML' });
-      if (result.restart) {
-        setTimeout(() => process.exit(0), 1500);
+      setWaitingInput(chatId, { field: 'engineKey', engineId: detected.engine });
+      const result = handleSettingsInput(chatId, tokenText);
+      if (result?.success) {
+        await ctx.reply(result.success, { parse_mode: 'HTML' });
+        if (result.restart) setTimeout(() => process.exit(0), 1500);
+      } else if (result?.error) {
+        await ctx.reply(result.error);
       }
-    } else if (result?.error) {
-      await ctx.reply(result.error);
+    } else {
+      // Любой другой секрет — только предупреждение
+      await ctx.reply(
+        `🔐 <b>Похоже на ${detected.name}!</b>\n\n` +
+        `Не отправляй секретные данные в чат. Сообщение сохраняется в истории Telegram и может быть скомпрометировано.\n\n` +
+        `Безопасный способ: /settings → 🔑 Переменные окружения — ` +
+        `там ключи хранятся в зашифрованном <code>.env</code> файле на сервере.`,
+        { parse_mode: 'HTML' }
+      );
     }
     return;
   }
