@@ -1,6 +1,7 @@
 // Абстракция AI-движка: Claude Code, OpenAI Codex, Gemini CLI
 import { spawn } from 'child_process';
 import { config } from './config.js';
+import { getOwnerName, getAgentName } from './onboarding.js';
 
 // ── Конфигурации движков ──
 
@@ -93,7 +94,13 @@ class EngineSession {
     this.busy = true;
     this.lastActivity = Date.now();
 
-    const args = this.engine.buildArgs(prompt, this.sessionId);
+    // Инъекция контекста — CLI знает кто владелец и кто он
+    const owner = getOwnerName();
+    const agent = getAgentName();
+    const contextPrefix = `[Контекст: ты — ${agent}, владелец — ${owner}. Отвечай на русском, неформально, на ты.]\n\n`;
+    const fullPrompt = contextPrefix + prompt;
+
+    const args = this.engine.buildArgs(fullPrompt, this.sessionId);
     const env = this.engine.buildEnv();
 
     const proc = spawn(this.engine.bin, args, {

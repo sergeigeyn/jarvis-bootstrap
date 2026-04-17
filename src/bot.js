@@ -7,6 +7,15 @@ import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './m
 import { processResponse } from './hooks.js';
 import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
 import { startScheduler } from './scheduler.js';
+import {
+  isOnboarded, getOnboardingState, setOnboardingState, clearOnboardingState,
+  getWelcomeMessage, getGreetingAfterName, getReturningMessage,
+  setOwnerName, completeOnboarding, getAgentName,
+} from './onboarding.js';
+import {
+  buildSettingsKeyboard, getSettingsText, handleSettingsCallback,
+  getWaitingInput, clearWaitingInput, handleSettingsInput,
+} from './settings.js';
 
 const bot = new Bot(config.botToken);
 const engineInfo = getEngineInfo(config.engine);
@@ -58,9 +67,7 @@ function splitMessage(text, maxLen) {
 // ── Обработка ответа (hooks → медиа-маркеры → текст) ──
 
 async function handleResponse(ctx, response) {
-  // Пропускаем через hooks — маскируем секреты
   const safe = processResponse(response);
-
   const { cleanText, markers } = parseMediaMarkers(safe);
 
   for (const marker of markers) {
@@ -87,7 +94,6 @@ async function handleMessage(ctx, promptText) {
     return;
   }
 
-  // Записываем сессию для trust level
   recordSession();
 
   const typingInterval = setInterval(() => {
@@ -114,11 +120,27 @@ async function handleMessage(ctx, promptText) {
 // ── Команды ──
 
 bot.command('start', async (ctx) => {
-  await ctx.reply(
-    `Привет! Я ${config.agentName}.\n\n` +
-    `Движок: ${engineInfo.name}\n` +
-    `Пиши текстом или отправляй голосовые — я всё пойму.`
-  );
+  if (!isAdmin(ctx)) {
+    await ctx.reply('Доступ только для владельца.');
+    return;
+  }
+
+  if (isOnboarded()) {
+    // Уже знакомы — короткое приветствие
+    await ctx.reply(getReturningMessage(), { parse_mode: 'HTML' });
+  } else {
+    // Первый раз — запускаем онбординг
+    setOnboardingState(ctx.chat.id, 'waiting_name');
+    await ctx.reply(getWelcomeMessage(), { parse_mode: 'HTML' });
+  }
+});
+
+bot.command('settings', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  await ctx.reply(getSettingsText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildSettingsKeyboard(),
+  });
 });
 
 bot.command('reset', async (ctx) => {
@@ -131,10 +153,22 @@ bot.command('status', async (ctx) => {
   const trust = getTrustState();
   await ctx.reply(
     `Движок: ${engineInfo.name}\n` +
+    `Агент: ${getAgentName()}\n` +
     `Сессия: ${session.busy ? 'занята' : 'свободна'}\n` +
     `Trust: ${trust.level} — ${getTrustName()} (${trust.sessions} сессий)\n` +
     `Последняя активность: ${new Date(session.lastActivity).toLocaleTimeString()}`
   );
+});
+
+// ── Callback-кнопки (settings) ──
+
+bot.on('callback_query:data', async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  if (data.startsWith('settings:')) {
+    await handleSettingsCallback(ctx);
+  } else {
+    await ctx.answerCallbackQuery();
+  }
 });
 
 // ── Текст ──
@@ -142,12 +176,45 @@ bot.command('status', async (ctx) => {
 bot.on('message:text', async (ctx) => {
   const text = ctx.message.text;
   if (text.startsWith('/')) return;
+  if (!isAdmin(ctx)) return;
+
+  const chatId = ctx.chat.id;
+
+  // 1. Онбординг — ждём имя
+  const obState = getOnboardingState(chatId);
+  if (obState === 'waiting_name') {
+    const name = text.trim();
+    if (name && name.length <= 50) {
+      setOwnerName(name);
+      completeOnboarding();
+      clearOnboardingState(chatId);
+      await ctx.reply(getGreetingAfterName(name), { parse_mode: 'HTML' });
+    } else {
+      await ctx.reply('Имя должно быть от 1 до 50 символов. Попробуй ещё раз:');
+    }
+    return;
+  }
+
+  // 2. Settings — ждём ввод (имя владельца / агента)
+  const waiting = getWaitingInput(chatId);
+  if (waiting) {
+    const result = handleSettingsInput(chatId, text);
+    if (result?.success) {
+      await ctx.reply(result.success, { parse_mode: 'HTML' });
+    } else if (result?.error) {
+      await ctx.reply(result.error);
+    }
+    return;
+  }
+
+  // 3. Обычное сообщение → engine
   await handleMessage(ctx, text);
 });
 
 // ── Голосовые ──
 
 bot.on('message:voice', async (ctx) => {
+  if (!isAdmin(ctx)) return;
   const fileId = ctx.message.voice.file_id;
   try {
     const filepath = await downloadFile(bot, fileId, '.ogg');
@@ -162,6 +229,7 @@ bot.on('message:voice', async (ctx) => {
 // ── Фото ──
 
 bot.on('message:photo', async (ctx) => {
+  if (!isAdmin(ctx)) return;
   const photo = ctx.message.photo;
   const largest = photo[photo.length - 1];
   try {
@@ -181,6 +249,7 @@ bot.on('message:photo', async (ctx) => {
 // ── Документы ──
 
 bot.on('message:document', async (ctx) => {
+  if (!isAdmin(ctx)) return;
   const doc = ctx.message.document;
   const ext = doc.file_name ? '.' + doc.file_name.split('.').pop() : '';
   try {
@@ -200,14 +269,17 @@ bot.on('message:document', async (ctx) => {
 
 // ── Запуск ──
 
-console.log(`[bot] starting ${config.agentName} (engine: ${engineInfo.name})...`);
+console.log(`[bot] starting ${getAgentName()} (engine: ${engineInfo.name})...`);
 startScheduler(bot);
 
 bot.start({
   onStart: () => {
-    console.log(`[bot] ${config.agentName} is running! Engine: ${engineInfo.name}`);
+    console.log(`[bot] ${getAgentName()} is running! Engine: ${engineInfo.name}`);
     if (config.adminId) {
-      bot.api.sendMessage(config.adminId, `${config.agentName} запущен.\nДвижок: ${engineInfo.name}\nTrust: ${getTrustName()}`).catch(() => {});
+      const msg = isOnboarded()
+        ? `${getAgentName()} перезапущен. Движок: ${engineInfo.name}`
+        : `${getAgentName()} запущен! Напиши /start чтобы начать.`;
+      bot.api.sendMessage(config.adminId, msg).catch(() => {});
     }
   },
 });
