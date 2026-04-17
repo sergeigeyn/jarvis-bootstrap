@@ -22,8 +22,40 @@ export function clearWaitingInput(chatId) {
 // ── Карта ключей по движкам ──
 
 const ENGINE_KEY_MAP = {
-  claude: { env: 'ANTHROPIC_API_KEY', hint: 'Anthropic API Key (sk-ant-...)' },
-  codex:  { env: 'OPENAI_API_KEY', hint: 'OpenAI API Key (sk-...)' },
+  claude: {
+    env: 'ANTHROPIC_API_KEY',
+    hint: 'Anthropic API Key (sk-ant-...)',
+    guide:
+      `<b>Как получить ключ Claude Code:</b>\n\n` +
+      `<b>Вариант A — API credits:</b>\n` +
+      `1. Зайди на console.anthropic.com\n` +
+      `2. Зарегистрируйся / войди\n` +
+      `3. Settings → API Keys → Create Key\n` +
+      `4. Скопируй ключ (начинается с <code>sk-ant-</code>)\n` +
+      `5. Пополни баланс (Settings → Billing)\n\n` +
+      `<b>Вариант B — подписка Claude Max ($100/мес):</b>\n` +
+      `1. Зайди на claude.ai → Settings → Subscription\n` +
+      `2. Подключи Claude Max\n` +
+      `3. Ключ не нужен — Claude Code авторизуется через <code>claude login</code>\n\n` +
+      `Если у тебя API credits — отправь ключ сюда:`,
+  },
+  codex: {
+    env: 'OPENAI_API_KEY',
+    hint: 'OpenAI API Key (sk-...)',
+    guide:
+      `<b>Как получить ключ Codex:</b>\n\n` +
+      `<b>Вариант A — API key:</b>\n` +
+      `1. Зайди на platform.openai.com\n` +
+      `2. Зарегистрируйся / войди\n` +
+      `3. API Keys → Create new secret key\n` +
+      `4. Скопируй ключ (начинается с <code>sk-</code>)\n` +
+      `5. Пополни баланс (Settings → Billing)\n\n` +
+      `<b>Вариант B — подписка ChatGPT Plus ($20/мес):</b>\n` +
+      `1. Зайди на chatgpt.com → Settings → Subscription\n` +
+      `2. Подключи Plus или Pro\n` +
+      `3. Codex работает через подписку без отдельного ключа\n\n` +
+      `Если у тебя API key — отправь его сюда:`,
+  },
 };
 
 // ── Режим работы ──
@@ -214,11 +246,7 @@ export async function handleSettingsCallback(ctx) {
     }
     waitingInput.set(chatId, { field: 'engineKey', engineId });
     await ctx.answerCallbackQuery();
-    await ctx.reply(
-      `Для <b>${getEngineInfo(engineId).name}</b> нужен ключ.\n\n` +
-      `Отправь <b>${keyInfo.hint}</b>:`,
-      { parse_mode: 'HTML' }
-    );
+    await ctx.reply(keyInfo.guide, { parse_mode: 'HTML' });
     return;
   }
 
