@@ -9,7 +9,7 @@ import { getTrustState, getTrustName } from './trust.js';
 
 // ── Состояние ожидания ввода ──
 
-const waitingInput = new Map(); // chatId → { field, engineId? }
+const waitingInput = new Map();
 
 export function getWaitingInput(chatId) {
   return waitingInput.get(chatId) || null;
@@ -19,31 +19,6 @@ export function clearWaitingInput(chatId) {
   waitingInput.delete(chatId);
 }
 
-// ── Главное меню настроек ──
-
-export function buildSettingsKeyboard() {
-  return new InlineKeyboard()
-    .text('👤 Моё имя', 'settings:owner_name')
-    .text('🤖 Имя агента', 'settings:agent_name')
-    .row()
-    .text('🧠 Движок', 'settings:engine')
-    .text('⚙️ Статус', 'settings:status')
-    .row()
-    .text('🔄 Сброс', 'settings:reset')
-    .text('✖ Закрыть', 'settings:close');
-}
-
-export function getSettingsText() {
-  const profile = getProfile();
-  const engine = getEngineInfo(config.engine);
-  return (
-    `<b>Настройки</b>\n\n` +
-    `👤 Владелец: <b>${profile.ownerName || '(не задано)'}</b>\n` +
-    `🤖 Агент: <b>${profile.agentName || config.agentName}</b>\n` +
-    `🧠 Движок: <b>${engine.name}</b>\n`
-  );
-}
-
 // ── Карта ключей по движкам ──
 
 const ENGINE_KEY_MAP = {
@@ -51,6 +26,60 @@ const ENGINE_KEY_MAP = {
   codex:  { env: 'OPENAI_API_KEY', hint: 'OpenAI API Key (sk-...)' },
   gemini: { env: 'GEMINI_API_KEY', hint: 'Gemini API Key (AIza...)' },
 };
+
+// ── Режим работы ──
+
+const MODES = ['авто', 'ручной', 'plan'];
+let currentMode = 'авто';
+
+// ── Часовой пояс ──
+
+let timezone = 'Moscow';
+
+// ── Текст карточки настроек (как в reference) ──
+
+export function getSettingsText() {
+  const engine = getEngineInfo(config.engine);
+  return (
+    `⚙️ <b>Настройки</b>\n\n` +
+    `📡 Подключение: <b>${getConnectionType()}</b>\n` +
+    `🔒 Режим: 😈 <b>${currentMode}</b>\n` +
+    `🧠 Модель: <b>${engine.name}</b>\n` +
+    `🕐 Часовой пояс: <b>${timezone}</b>\n` +
+    `💰 Лимит: <b>без лимита</b> · 🐷 Сегодня: <b>$0.00</b>`
+  );
+}
+
+function getConnectionType() {
+  if (config.engine === 'claude') return 'Подписка Claude';
+  if (config.engine === 'codex') return 'API OpenAI';
+  if (config.engine === 'gemini') return 'Gemini Free';
+  return 'API';
+}
+
+// ── Главная клавиатура настроек ──
+
+export function buildSettingsKeyboard() {
+  const engine = getEngineInfo(config.engine);
+  return new InlineKeyboard()
+    .text('📡 Подключение: подписка', 'settings:connection')
+    .row()
+    .text('🔑 Переменные окружения', 'settings:env_vars')
+    .row()
+    .text(`🔒 Режим: 😈 ${currentMode}`, 'settings:mode')
+    .row()
+    .text(`🧠 Модель: ${engine.name}`, 'settings:engine')
+    .row()
+    .text('💰 Лимит: без ограничений', 'settings:limit')
+    .row()
+    .text(`🕐 Часовой пояс`, 'settings:timezone')
+    .row()
+    .text('⏰ Таймеры', 'settings:timers')
+    .row()
+    .text('⚙️ Дополнительно', 'settings:advanced')
+    .row()
+    .text('« Назад', 'menu:back');
+}
 
 // ── Обновление .env ──
 
@@ -62,14 +91,12 @@ function updateEnvFile(engineId, apiKey) {
   const keyInfo = ENGINE_KEY_MAP[engineId];
   if (!keyInfo) return false;
 
-  // Обновляем ENGINE
   if (content.match(/^ENGINE=.*/m)) {
     content = content.replace(/^ENGINE=.*/m, `ENGINE=${engineId}`);
   } else {
     content += `\nENGINE=${engineId}`;
   }
 
-  // Обновляем/добавляем ключ
   if (content.match(new RegExp(`^${keyInfo.env}=.*`, 'm'))) {
     content = content.replace(new RegExp(`^${keyInfo.env}=.*`, 'm'), `${keyInfo.env}=${apiKey}`);
   } else {
@@ -86,20 +113,76 @@ export async function handleSettingsCallback(ctx) {
   const data = ctx.callbackQuery.data;
   const chatId = ctx.chat.id;
 
-  if (data === 'settings:owner_name') {
-    waitingInput.set(chatId, { field: 'ownerName' });
+  // ── Подключение ──
+  if (data === 'settings:connection') {
     await ctx.answerCallbackQuery();
-    await ctx.reply('Напиши своё имя:');
+    await ctx.reply(
+      `<b>Подключение</b>\n\n` +
+      `Текущее: <b>${getConnectionType()}</b>\n\n` +
+      `Для смены движка используй кнопку «Модель» в настройках.`,
+      { parse_mode: 'HTML' }
+    );
     return;
   }
 
-  if (data === 'settings:agent_name') {
-    waitingInput.set(chatId, { field: 'agentName' });
+  // ── Переменные окружения ──
+  if (data === 'settings:env_vars') {
     await ctx.answerCallbackQuery();
-    await ctx.reply('Напиши новое имя агента:');
+    const envPath = join(config.dataDir, '.env');
+    let vars = '(файл .env не найден)';
+    if (existsSync(envPath)) {
+      const lines = readFileSync(envPath, 'utf8').split('\n')
+        .filter(l => l.trim() && !l.startsWith('#'))
+        .map(l => {
+          const eq = l.indexOf('=');
+          if (eq === -1) return l;
+          const key = l.slice(0, eq);
+          const val = l.slice(eq + 1);
+          // Маскируем значения
+          const masked = val.length > 4 ? '…' + val.slice(-4) : '****';
+          return `${key}=${masked}`;
+        });
+      vars = lines.join('\n') || '(пусто)';
+    }
+    await ctx.reply(
+      `<b>Переменные окружения</b>\n\n<pre>${vars}</pre>\n\n` +
+      `Редактировать: <code>~/.jarvis/.env</code>`,
+      { parse_mode: 'HTML' }
+    );
     return;
   }
 
+  // ── Режим ──
+  if (data === 'settings:mode') {
+    const kb = new InlineKeyboard();
+    for (const m of MODES) {
+      const mark = m === currentMode ? ' ✓' : '';
+      kb.text(`${m}${mark}`, `settings:mode_pick:${m}`);
+    }
+    kb.row().text('« Назад', 'settings:back');
+    await ctx.answerCallbackQuery();
+    await ctx.reply(`<b>Режим работы</b>\n\nТекущий: <b>${currentMode}</b>`, {
+      parse_mode: 'HTML',
+      reply_markup: kb,
+    });
+    return;
+  }
+
+  if (data.startsWith('settings:mode_pick:')) {
+    const mode = data.split(':')[2];
+    if (MODES.includes(mode)) {
+      currentMode = mode;
+    }
+    await ctx.answerCallbackQuery({ text: `Режим: ${currentMode}` });
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(getSettingsText(), {
+      parse_mode: 'HTML',
+      reply_markup: buildSettingsKeyboard(),
+    });
+    return;
+  }
+
+  // ── Движок/Модель ──
   if (data === 'settings:engine') {
     const current = config.engine;
     const kb = new InlineKeyboard();
@@ -126,12 +209,10 @@ export async function handleSettingsCallback(ctx) {
       await ctx.answerCallbackQuery({ text: 'Неизвестный движок' });
       return;
     }
-
     if (engineId === config.engine) {
       await ctx.answerCallbackQuery({ text: 'Уже используется' });
       return;
     }
-
     waitingInput.set(chatId, { field: 'engineKey', engineId });
     await ctx.answerCallbackQuery();
     await ctx.reply(
@@ -142,22 +223,108 @@ export async function handleSettingsCallback(ctx) {
     return;
   }
 
-  if (data === 'settings:status') {
-    const trust = getTrustState();
-    const engine = getEngineInfo(config.engine);
-    const profile = getProfile();
-    const text =
-      `<b>Статус</b>\n\n` +
-      `👤 Владелец: ${profile.ownerName || '(не задано)'}\n` +
-      `🤖 Агент: ${getAgentName()}\n` +
-      `🧠 Движок: ${engine.name}\n` +
-      `🔒 Trust: ${trust.level} — ${getTrustName()} (${trust.sessions} сессий)\n` +
-      `📅 Создан: ${profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('ru') : '—'}`;
+  // ── Лимит ──
+  if (data === 'settings:limit') {
     await ctx.answerCallbackQuery();
-    await ctx.reply(text, { parse_mode: 'HTML' });
+    await ctx.reply(
+      `<b>Лимит расходов</b>\n\n` +
+      `Текущий: <b>без ограничений</b>\n\n` +
+      `Функция лимитов пока в разработке.`,
+      { parse_mode: 'HTML' }
+    );
     return;
   }
 
+  // ── Часовой пояс ──
+  if (data === 'settings:timezone') {
+    const zones = ['Moscow', 'UTC', 'Europe/London', 'US/Eastern', 'US/Pacific', 'Asia/Tokyo'];
+    const kb = new InlineKeyboard();
+    for (let i = 0; i < zones.length; i++) {
+      const z = zones[i];
+      const mark = z === timezone ? ' ✓' : '';
+      kb.text(`${z}${mark}`, `settings:tz_pick:${z}`);
+      if ((i + 1) % 2 === 0) kb.row();
+    }
+    kb.row().text('« Назад', 'settings:back');
+    await ctx.answerCallbackQuery();
+    await ctx.reply(`<b>Часовой пояс</b>\n\nТекущий: <b>${timezone}</b>`, {
+      parse_mode: 'HTML',
+      reply_markup: kb,
+    });
+    return;
+  }
+
+  if (data.startsWith('settings:tz_pick:')) {
+    timezone = data.replace('settings:tz_pick:', '');
+    await ctx.answerCallbackQuery({ text: `Часовой пояс: ${timezone}` });
+    await ctx.deleteMessage().catch(() => {});
+    await ctx.reply(getSettingsText(), {
+      parse_mode: 'HTML',
+      reply_markup: buildSettingsKeyboard(),
+    });
+    return;
+  }
+
+  // ── Таймеры ──
+  if (data === 'settings:timers') {
+    await ctx.answerCallbackQuery();
+    const schedulesPath = join(config.dataDir, 'schedules.json');
+    let timersText = 'Нет таймеров.';
+    if (existsSync(schedulesPath)) {
+      try {
+        const schedules = JSON.parse(readFileSync(schedulesPath, 'utf8'));
+        if (schedules.length > 0) {
+          timersText = schedules.map((s, i) =>
+            `${i + 1}. <b>${s.name || 'Без имени'}</b> — ${s.type}, ${s.enabled ? 'активен' : 'выключен'}`
+          ).join('\n');
+        }
+      } catch { /* ignore */ }
+    }
+    await ctx.reply(`<b>Таймеры</b>\n\n${timersText}`, { parse_mode: 'HTML' });
+    return;
+  }
+
+  // ── Дополнительно ──
+  if (data === 'settings:advanced') {
+    const profile = getProfile();
+    const trust = getTrustState();
+    const kb = new InlineKeyboard()
+      .text('👤 Моё имя', 'settings:owner_name')
+      .text('🤖 Имя агента', 'settings:agent_name')
+      .row()
+      .text('🔄 Сброс онбординга', 'settings:reset')
+      .row()
+      .text('« Назад', 'settings:back');
+
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `<b>Дополнительно</b>\n\n` +
+      `👤 Владелец: <b>${profile.ownerName || '(не задано)'}</b>\n` +
+      `🤖 Агент: <b>${getAgentName()}</b>\n` +
+      `🔒 Trust: ${trust.level} — ${getTrustName()} (${trust.sessions} сессий)\n` +
+      `📅 Создан: ${profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('ru') : '—'}`,
+      { parse_mode: 'HTML', reply_markup: kb }
+    );
+    return;
+  }
+
+  // ── Имя владельца ──
+  if (data === 'settings:owner_name') {
+    waitingInput.set(chatId, { field: 'ownerName' });
+    await ctx.answerCallbackQuery();
+    await ctx.reply('Напиши своё имя:');
+    return;
+  }
+
+  // ── Имя агента ──
+  if (data === 'settings:agent_name') {
+    waitingInput.set(chatId, { field: 'agentName' });
+    await ctx.answerCallbackQuery();
+    await ctx.reply('Напиши новое имя агента:');
+    return;
+  }
+
+  // ── Сброс ──
   if (data === 'settings:reset') {
     await ctx.answerCallbackQuery();
     await ctx.reply(
@@ -178,6 +345,7 @@ export async function handleSettingsCallback(ctx) {
     return;
   }
 
+  // ── Назад (к главным настройкам) ──
   if (data === 'settings:back') {
     await ctx.answerCallbackQuery();
     await ctx.deleteMessage().catch(() => {});
@@ -188,6 +356,7 @@ export async function handleSettingsCallback(ctx) {
     return;
   }
 
+  // ── Закрыть ──
   if (data === 'settings:close') {
     await ctx.answerCallbackQuery();
     await ctx.deleteMessage().catch(() => {});
@@ -226,7 +395,7 @@ export function handleSettingsInput(chatId, text) {
   if (waiting.field === 'engineKey') {
     if (!trimmed || trimmed.length < 10) {
       waitingInput.delete(chatId);
-      return { error: 'Ключ слишком короткий. Попробуй ещё раз через /settings → Движок.' };
+      return { error: 'Ключ слишком короткий. Попробуй ещё раз через Настройки → Модель.' };
     }
     const engineId = waiting.engineId;
     const ok = updateEnvFile(engineId, trimmed);
