@@ -117,7 +117,34 @@ async function handleMessage(ctx, promptText) {
   });
 }
 
-// ── Команды ──
+// ── Prompt-команды (делегируются в engine) ──
+
+const PROMPT_COMMANDS = {
+  newtask:  { prompt: 'Начинаем новую задачу. Спроси что нужно сделать.', description: 'Новая задача' },
+  undo:     { prompt: 'Отмени последнее изменение (git). Покажи что отменил.', description: 'Отменить правку' },
+  projects: { prompt: 'Покажи список проектов в ~/projects/. Для каждого — краткое описание если есть README или package.json.', description: 'Проекты' },
+  sessions: { prompt: 'Покажи информацию об активных сессиях и последней активности.', description: 'Сессии' },
+  connect:  { prompt: 'Настрой VS Code туннель для удалённого доступа к серверу. Используй code tunnel CLI.', description: 'VS Code туннель' },
+  recovery: { prompt: 'Покажи SSH-доступ к серверу: IP, порт, пользователь. Проверь что SSH работает.', description: 'Аварийный доступ' },
+  cost:     { prompt: 'Покажи расходы за сегодня: использование API, токены, запросы. Проверь логи.', description: 'Расходы за день' },
+  monitor:  { prompt: 'Проверь статус мониторинга. Прочитай ~/.iia/monitor/config.json если есть, покажи что отслеживается.', description: 'Статус мониторинга' },
+  digest:   { prompt: 'Сделай дайджест — что произошло за сегодня. Проверь daily notes, git log, задачи.', description: 'Дайджест контента' },
+  sources:  { prompt: 'Покажи настроенные каналы и аккаунты для мониторинга. Проверь конфиги в ~/.iia/monitor/.', description: 'Каналы и аккаунты' },
+  skills:   { prompt: 'Покажи установленные навыки агента из ~/workspace/.claude/skills/. Для каждого — название и краткое описание.', description: 'Навыки агента' },
+  feedback: { prompt: 'Пользователь хочет оставить отзыв или предложение. Спроси что именно, запиши в daily note.', description: 'Отзыв' },
+};
+
+// Регистрируем prompt-команды
+for (const [cmd, { prompt }] of Object.entries(PROMPT_COMMANDS)) {
+  bot.command(cmd, async (ctx) => {
+    if (!isAdmin(ctx)) return;
+    // /newtask — сначала сбрасываем сессию
+    if (cmd === 'newtask') killSession(ctx.chat.id);
+    await handleMessage(ctx, prompt);
+  });
+}
+
+// ── Команды (с собственной логикой) ──
 
 bot.command('start', async (ctx) => {
   if (!isAdmin(ctx)) {
@@ -182,6 +209,9 @@ bot.command('status', async (ctx) => {
 
 bot.command('help', async (ctx) => {
   if (!isAdmin(ctx)) return;
+  const promptCmds = Object.entries(PROMPT_COMMANDS)
+    .map(([cmd, { description }]) => `/${cmd} — ${description}`)
+    .join('\n');
   await ctx.reply(
     `<b>Команды</b>\n\n` +
     `/start — Приветствие\n` +
@@ -189,6 +219,9 @@ bot.command('help', async (ctx) => {
     `/clear — Сбросить контекст\n` +
     `/settings — Настройки\n` +
     `/status — Статус системы\n` +
+    `\n` +
+    `${promptCmds}\n` +
+    `\n` +
     `/help — Все команды`,
     { parse_mode: 'HTML' }
   );
@@ -311,14 +344,28 @@ bot.start({
     console.log(`[bot] ${getAgentName()} is running! Engine: ${engineInfo.name}`);
 
     // Регистрируем меню команд в Telegram
-    await bot.api.setMyCommands([
-      { command: 'start', description: 'Приветствие' },
+    const commands = [
+      { command: 'start', description: 'Меню' },
+      { command: 'newtask', description: 'Новая задача' },
       { command: 'stop', description: 'Остановить задачу' },
       { command: 'clear', description: 'Сбросить контекст' },
+      { command: 'undo', description: 'Отменить правку' },
+      { command: 'projects', description: 'Проекты' },
+      { command: 'sessions', description: 'Сессии' },
+      { command: 'connect', description: 'VS Code туннель' },
+      { command: 'recovery', description: 'Аварийный доступ к серверу' },
       { command: 'settings', description: 'Настройки' },
       { command: 'status', description: 'Статус системы' },
+      { command: 'cost', description: 'Расходы за день' },
+      { command: 'monitor', description: 'Статус мониторинга' },
+      { command: 'digest', description: 'Дайджест контента' },
+      { command: 'sources', description: 'Каналы и аккаунты' },
+      { command: 'skills', description: 'Навыки агента' },
+      { command: 'feedback', description: 'Отзыв' },
       { command: 'help', description: 'Все команды' },
-    ]).catch((err) => console.error(`[bot] setMyCommands failed: ${err.message}`));
+    ];
+    await bot.api.setMyCommands(commands)
+      .catch((err) => console.error(`[bot] setMyCommands failed: ${err.message}`));
 
     if (config.adminId) {
       const msg = isOnboarded()
