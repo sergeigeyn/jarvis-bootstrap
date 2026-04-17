@@ -10,7 +10,7 @@ AI-агент в Telegram с двумя движками на выбор. Нас
 | | Движок | Стоимость | Качество |
 |---|---|---|---|
 | 💲 | OpenAI Codex | $20/мес (ChatGPT Plus) | Отличное |
-| ⭐ | Claude Code | $100/мес (Claude Max) или API | Лучшее |
+| ⭐ | Claude Code | $100/мес (Claude Max) или API | Лучшее (Opus 4.7) |
 
 Оба движка работают с одними промптами, навыками и памятью. Переключение через `/settings → Модель` или `ENGINE=` в `.env`.
 
@@ -95,7 +95,7 @@ node src/bot.js
 | `/recovery` | Аварийный доступ к серверу | Prompt → engine |
 | `/settings` | Настройки (inline-клавиатура) | Логика |
 | `/status` | Статус системы | Логика |
-| `/cost` | Расходы за день | Prompt → engine |
+| `/cost` | Расходы за день | Логика |
 | `/monitor` | Статус мониторинга | Prompt → engine |
 | `/digest` | Дайджест контента | Prompt → engine |
 | `/sources` | Каналы и аккаунты | Prompt → engine |
@@ -124,7 +124,7 @@ jarvis-bootstrap/
 │   └── scheduler.js    # Расписания (daily/weekly/once)
 ├── templates/
 │   ├── workspace/      # SOUL.md, CLAUDE.md, MEMORY.md
-│   └── skills/         # 5 встроенных навыков
+│   └── skills/         # 6 встроенных навыков
 ├── scripts/
 │   └── bootstrap.sh    # Автоустановка на VPS (мульти-дистрибутив)
 └── docs/
@@ -236,12 +236,13 @@ sudo systemctl restart jarvis-bot
 - [x] Предупреждение безопасности при отправке ключей в чат (11 типов секретов)
 
 ### Фаза 2: Паритет с IIA
-- [ ] **state.js** — персистентный стейт (state.json): сессии, расходы, режим, authMode
-- [ ] **stream-json** — парсинг CLI-вывода: cost, sessionId, tool usage
-- [ ] **Cost tracking** — costHistory по дням, dailySpendLimit ($50), auto-pause на 100%, alert на 80%
-- [ ] **Permission modes** — auto/control/plan с UI в settings, session reset при смене
-- [ ] **CLI args** — --max-turns 25, --allowedTools, --disallowedTools, --resume
-- [ ] **Auth mode** — автодетект subscription vs api-key, persist в state.json
+- [x] **state.js** — персистентный стейт (state.json): сессии, расходы, режим, authMode
+- [x] **stream-json** — парсинг CLI-вывода: cost, sessionId, tool usage
+- [x] **Cost tracking** — costHistory по дням, dailySpendLimit ($50), auto-pause на 100%, alert на 80%
+- [x] **Permission modes** — auto/control/plan с UI в settings, session reset при смене
+- [x] **CLI args** — --max-turns 25, --allowedTools, --disallowedTools, --resume
+- [x] **Auth mode** — автодетект subscription vs api-key, persist в state.json
+- [x] **Opus 4.7** — дефолтная модель, 1M context, xhigh effort
 - [ ] **Мониторинг** — YouTube, Twitter, GitHub, Telegram, RSS + storage backend
 
 ### Далее

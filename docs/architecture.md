@@ -225,9 +225,10 @@ CLI stream-json → парсинг cost_usd → state.costHistory[date] += cost
 ### Фаза 1: Ядро (готово)
 Telegram ↔ CLI обвязка, медиа, безопасность, онбординг, settings UI.
 
-### Фаза 2: Паритет с IIA (текущая)
-State persistence, stream-json, cost tracking, permission modes, auth modes.
-Мониторинг источников (YouTube, Twitter, GitHub, RSS).
+### Фаза 2: Паритет с IIA (почти готово)
+State persistence, stream-json, cost tracking, permission modes, auth modes — **готово**.
+Opus 4.7 как дефолтная модель (1M context, xhigh effort) — **готово**.
+Остаётся: мониторинг источников (YouTube, Twitter, GitHub, RSS).
 
 ### Фаза 3: Проактивность
 Утренние/вечерние брифинги, авто-дайджесты, сканирование проектов.
