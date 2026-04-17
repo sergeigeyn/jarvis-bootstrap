@@ -20,13 +20,11 @@ if (existsSync(envPath)) {
   }
 }
 
-// Определяем движок и ключ
-const engine = (process.env.ENGINE || 'claude').toLowerCase();
-const ENGINE_KEY_MAP = {
-  claude: 'ANTHROPIC_API_KEY',
-  codex: 'OPENAI_API_KEY',
-};
-const keyEnv = ENGINE_KEY_MAP[engine] || ENGINE_KEY_MAP.claude;
+// Определяем движок и ключ (неизвестный движок → claude)
+const SUPPORTED_ENGINES = { claude: 'ANTHROPIC_API_KEY', codex: 'OPENAI_API_KEY' };
+const rawEngine = (process.env.ENGINE || 'claude').toLowerCase();
+const engine = SUPPORTED_ENGINES[rawEngine] ? rawEngine : 'claude';
+const keyEnv = SUPPORTED_ENGINES[engine];
 
 export const config = {
   // Движок
@@ -56,4 +54,6 @@ export const config = {
 
 // Валидация
 if (!config.botToken) throw new Error('BOT_TOKEN is required. Set it in ~/.jarvis/.env');
-if (!config.engineKey) throw new Error(`${keyEnv} is required for engine "${engine}". Set it in ~/.jarvis/.env`);
+if (!config.engineKey) {
+  console.warn(`[config] WARNING: ${keyEnv} не задан. Бот запустится, но движок не будет работать. Настрой ключ через /settings → Модель.`);
+}
