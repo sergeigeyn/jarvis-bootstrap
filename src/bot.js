@@ -98,6 +98,66 @@ async function processQueue(chatId) {
   await handleMessage(ctx, promptText);
 }
 
+// ── Батчинг входящих сообщений ──
+// Собираем сообщения за BATCH_DELAY_MS мс, обрабатываем как один запрос
+
+const BATCH_DELAY_MS = 500;
+const messageBatches = new Map(); // chatId → { items: Promise[], timer, ctx }
+
+function addToBatch(chatId, ctx, asyncFn) {
+  let batch = messageBatches.get(chatId);
+  if (!batch) {
+    batch = { items: [], timer: null, ctx };
+    messageBatches.set(chatId, batch);
+  }
+  batch.ctx = ctx;
+  batch.items.push(asyncFn()); // запускаем async-работу (download, transcribe) сразу
+  if (batch.timer) clearTimeout(batch.timer);
+  batch.timer = setTimeout(() => flushBatch(chatId), BATCH_DELAY_MS);
+}
+
+async function flushBatch(chatId) {
+  const batch = messageBatches.get(chatId);
+  if (!batch) return;
+  messageBatches.delete(chatId);
+
+  const results = await Promise.allSettled(batch.items);
+  const ctx = batch.ctx;
+  const prompts = [];
+  const transcripts = [];
+  const errors = new Set();
+
+  for (const r of results) {
+    if (r.status !== 'fulfilled' || !r.value) {
+      if (r.status === 'rejected') errors.add(r.reason.message);
+      continue;
+    }
+    const item = r.value;
+    if (item.type === 'error') { errors.add(item.message); continue; }
+    if (item.type === 'voice') transcripts.push(item.transcript);
+    prompts.push(item.prompt);
+  }
+
+  // Транскрипции голосовых — одним сообщением
+  if (transcripts.length > 0) {
+    await ctx.reply(`🎤 <i>${transcripts.join('\n')}</i>`, { parse_mode: 'HTML' });
+  }
+
+  // Ошибки — дедуплицированно, один раз
+  for (const err of errors) {
+    await ctx.reply(err, { parse_mode: 'HTML' });
+  }
+
+  if (prompts.length === 0) return;
+
+  const combined = prompts.length === 1
+    ? prompts[0]
+    : `Пользователь отправил ${prompts.length} сообщений подряд. Обработай как один запрос:\n\n` +
+      prompts.join('\n\n---\n\n');
+
+  await handleMessage(ctx, combined);
+}
+
 // ── Основной обработчик ──
 
 async function handleMessage(ctx, promptText) {
@@ -538,8 +598,8 @@ bot.on('message:text', async (ctx) => {
     return;
   }
 
-  // 4. Обычное сообщение → engine
-  await handleMessage(ctx, text);
+  // 4. Обычное сообщение → батч (ждём 500мс, вдруг ещё что-то придёт)
+  addToBatch(chatId, ctx, async () => ({ type: 'text', prompt: text }));
 });
 
 // ── Голосовые ──
@@ -547,14 +607,18 @@ bot.on('message:text', async (ctx) => {
 bot.on('message:voice', async (ctx) => {
   if (!isAdmin(ctx)) return;
   const fileId = ctx.message.voice.file_id;
-  try {
+
+  addToBatch(ctx.chat.id, ctx, async () => {
+    if (!config.deepgramKey) {
+      return { type: 'error', message: '🔐 Голос не распознан — добавь DEEPGRAM_API_KEY в /settings → 🔑 Переменные' };
+    }
     const filepath = await downloadFile(bot, fileId, '.ogg');
     const transcript = await transcribeVoice(filepath);
-    await ctx.reply(`🎤 <i>${transcript}</i>`, { parse_mode: 'HTML' });
-    await handleMessage(ctx, transcript);
-  } catch (err) {
-    await ctx.reply(`Ошибка обработки голосового: ${err.message}`);
-  }
+    if (transcript.startsWith('[')) {
+      return { type: 'error', message: transcript };
+    }
+    return { type: 'voice', prompt: transcript, transcript };
+  });
 });
 
 // ── Фото ──
@@ -563,18 +627,15 @@ bot.on('message:photo', async (ctx) => {
   if (!isAdmin(ctx)) return;
   const photo = ctx.message.photo;
   const largest = photo[photo.length - 1];
-  try {
+  const caption = ctx.message.caption || '';
+
+  addToBatch(ctx.chat.id, ctx, async () => {
     const filepath = await downloadFile(bot, largest.file_id, '.jpg');
-    const caption = ctx.message.caption || 'Что на этом фото?';
-
     const prompt = `Пользователь отправил фото: ${filepath}\n` +
-      `Подпись: ${caption}\n` +
+      (caption ? `Подпись: ${caption}\n` : '') +
       `Используй Read tool чтобы посмотреть изображение.`;
-
-    await handleMessage(ctx, prompt);
-  } catch (err) {
-    await ctx.reply(`Ошибка обработки фото: ${err.message}`);
-  }
+    return { type: 'photo', prompt };
+  });
 });
 
 // ── Документы ──
@@ -644,19 +705,14 @@ bot.on('message:document', async (ctx) => {
     } catch { /* не токен — продолжаем как обычный файл */ }
   }
 
-  try {
+  const fileName = doc.file_name || 'unknown';
+  const caption = ctx.message.caption || `Файл: ${fileName}`;
+
+  addToBatch(chatId, ctx, async () => {
     const filepath = await downloadFile(bot, doc.file_id, ext);
-    const caption = ctx.message.caption || `Файл: ${doc.file_name || 'unknown'}`;
-
-    const prompt = `Пользователь отправил файл: ${filepath}\n` +
-      `Имя: ${doc.file_name || 'unknown'}\n` +
-      `Подпись: ${caption}\n` +
-      `Прочитай файл и ответь.`;
-
-    await handleMessage(ctx, prompt);
-  } catch (err) {
-    await ctx.reply(`Ошибка обработки файла: ${err.message}`);
-  }
+    const prompt = `Пользователь отправил файл: ${filepath}\nИмя: ${fileName}\nПодпись: ${caption}\nПрочитай файл и ответь.`;
+    return { type: 'document', prompt };
+  });
 });
 
 // ── Запуск ──
