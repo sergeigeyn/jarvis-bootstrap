@@ -6,6 +6,7 @@ import {
   getPermissionMode, getSessionId, setSessionId,
   detectAuthMode, recordCost, isCostPaused,
 } from './state.js';
+import { resolveProjectDir } from './projects.js';
 
 // ── Disallowed tools (блокировка опасных паттернов на уровне CLI) ──
 
@@ -189,9 +190,10 @@ class EngineSession {
     const args = this.engine.buildArgs(fullPrompt, sessionId, permMode);
     const env = this.engine.buildEnv();
 
+    const cwd = resolveProjectDir();
     const proc = spawn(this.engine.bin, args, {
       env,
-      cwd: config.workspaceDir,
+      cwd,
       timeout: 5 * 60 * 1000,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

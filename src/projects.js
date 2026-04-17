@@ -36,11 +36,34 @@ export function getCurrentProject() {
   return currentProject;
 }
 
+// Резолвим имя проекта → абсолютный путь для CWD движка
+export function resolveProjectDir() {
+  if (!currentProject) return config.workspaceDir;
+
+  // ~/workspace или ~/workspace/subfolder
+  if (currentProject.startsWith('~/workspace')) {
+    const rel = currentProject.replace('~/workspace', '');
+    return rel ? join(config.workspaceDir, rel.slice(1)) : config.workspaceDir;
+  }
+
+  // Имя проекта из ~/projects/
+  const projectPath = join(config.projectsDir, currentProject);
+  if (existsSync(projectPath)) return projectPath;
+
+  // fallback
+  return config.workspaceDir;
+}
+
 // ── Список проектов ──
 
 // Служебные папки workspace — НЕ проекты
 const WORKSPACE_SKIP = new Set([
   'memory', 'knowledge', '.claude', '.git', 'node_modules',
+]);
+
+// Системные проекты — НЕ показываем (агент может повредить свой же код)
+const SYSTEM_PROJECTS = new Set([
+  'jarvis-bootstrap', 'jarvis-installer', 'helper-aishnik',
 ]);
 
 function getProjectsList() {
@@ -59,7 +82,7 @@ function getProjectsList() {
 
   if (existsSync(config.projectsDir)) {
     const dirs = readdirSync(config.projectsDir, { withFileTypes: true })
-      .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+      .filter(d => d.isDirectory() && !d.name.startsWith('.') && !SYSTEM_PROJECTS.has(d.name))
       .map(d => d.name)
       .sort();
     projects.push(...dirs);
@@ -158,13 +181,22 @@ export async function handleProjectsCallback(ctx, handleMessage) {
 
   if (data.startsWith('projects:switch:')) {
     const projectName = data.replace('projects:switch:', '');
+
+    // Блокируем системные проекты (на случай кеша старой клавиатуры)
+    if (SYSTEM_PROJECTS.has(projectName)) {
+      await ctx.answerCallbackQuery({ text: '⛔ Системный проект — доступ закрыт' });
+      return;
+    }
+
     currentProject = projectName;
     saveCurrentProject();
     await ctx.answerCallbackQuery({ text: `Проект: ${projectName}` });
-    await ctx.editMessageText(getProjectsText(), {
-      parse_mode: 'HTML',
-      reply_markup: buildProjectsKeyboard(),
-    });
+    try {
+      await ctx.editMessageText(getProjectsText(), {
+        parse_mode: 'HTML',
+        reply_markup: buildProjectsKeyboard(),
+      });
+    } catch { /* message not modified — ok */ }
     return;
   }
 
