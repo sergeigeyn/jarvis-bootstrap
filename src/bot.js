@@ -353,7 +353,16 @@ bot.on('message:text', async (ctx) => {
   // 2. Settings — ждём ввод (имя владельца / агента / ключ движка)
   const waiting = getWaitingInput(chatId);
   if (waiting) {
-    const result = handleSettingsInput(chatId, text);
+    // Если токен обёрнут в бэктик — извлечь из code entity
+    let inputText = text;
+    if (waiting.field === 'engineKey' && ctx.message.entities) {
+      const codeEntity = ctx.message.entities.find(e => e.type === 'code' || e.type === 'pre');
+      if (codeEntity) {
+        inputText = text.substring(codeEntity.offset, codeEntity.offset + codeEntity.length);
+        console.log(`[bot] extracted token from code entity: ${inputText.length} chars`);
+      }
+    }
+    const result = handleSettingsInput(chatId, inputText);
     if (result?.success) {
       await ctx.reply(result.success, { parse_mode: 'HTML' });
       // Смена движка — перезапуск через systemd
@@ -409,8 +418,34 @@ bot.on('message:photo', async (ctx) => {
 
 bot.on('message:document', async (ctx) => {
   if (!isAdmin(ctx)) return;
+  const chatId = ctx.chat.id;
   const doc = ctx.message.document;
   const ext = doc.file_name ? '.' + doc.file_name.split('.').pop() : '';
+
+  // Если ждём ключ/токен — читаем содержимое файла как ключ
+  const waiting = getWaitingInput(chatId);
+  if (waiting?.field === 'engineKey' && (ext === '.txt' || ext === '.env' || ext === '.key')) {
+    try {
+      const filepath = await downloadFile(bot, doc.file_id, ext);
+      const { readFileSync } = await import('fs');
+      const tokenContent = readFileSync(filepath, 'utf8').trim();
+      console.log(`[bot] token from file: ${tokenContent.length} chars, file: ${doc.file_name}`);
+
+      const result = handleSettingsInput(chatId, tokenContent);
+      if (result?.success) {
+        await ctx.reply(result.success, { parse_mode: 'HTML' });
+        if (result.restart) {
+          setTimeout(() => process.exit(0), 1500);
+        }
+      } else if (result?.error) {
+        await ctx.reply(result.error);
+      }
+    } catch (err) {
+      await ctx.reply(`Ошибка чтения файла: ${err.message}`);
+    }
+    return;
+  }
+
   try {
     const filepath = await downloadFile(bot, doc.file_id, ext);
     const caption = ctx.message.caption || `Файл: ${doc.file_name || 'unknown'}`;
