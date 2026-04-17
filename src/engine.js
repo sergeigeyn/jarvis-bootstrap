@@ -46,15 +46,17 @@ const ENGINES = {
     name: 'Gemini CLI',
     bin: 'gemini',
     buildArgs: (prompt) => {
-      return ['--noinput', prompt];
+      // -p = non-interactive (headless) mode
+      return ['-p', prompt];
     },
     buildEnv: () => ({
       ...process.env,
+      GEMINI_API_KEY: config.engineKey,
       GOOGLE_API_KEY: config.engineKey,
       HOME: config.home,
     }),
-    install: 'npm install -g @anthropic-ai/claude-code', // TODO: уточнить пакет gemini
-    authEnv: 'GOOGLE_API_KEY',
+    install: 'npm install -g @google/gemini-cli',
+    authEnv: 'GEMINI_API_KEY',
     plans: 'Бесплатно (Google аккаунт, 1000 req/день)',
   },
 };
