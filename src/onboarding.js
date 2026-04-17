@@ -5,6 +5,10 @@ import { config } from './config.js';
 
 const PROFILE_PATH = join(config.dataDir, 'profile.json');
 
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // ── Профиль ──
 
 const defaultProfile = {
@@ -138,7 +142,7 @@ export function getWelcomeMessage() {
 export function getGreetingAfterName(ownerName) {
   const agent = getAgentName();
   return (
-    `Приятно познакомиться, <b>${ownerName}</b>! :)\n\n` +
+    `Приятно познакомиться, <b>${escapeHtml(ownerName)}</b>! :)\n\n` +
     `Я — <b>${agent}</b>. Буду твоим напарником: помогу с кодом, ` +
     `задачами, автоматизацией — чем скажешь.\n\n` +
     `Общаюсь неформально, на ты. Если идея плохая — скажу прямо. ` +
@@ -153,7 +157,7 @@ export function getReturningMessage() {
   const owner = getOwnerName();
   const agent = getAgentName();
   return (
-    `С возвращением, <b>${owner}</b>! ` +
+    `С возвращением, <b>${escapeHtml(owner)}</b>! ` +
     `${agent} на связи. Чем займёмся?`
   );
 }

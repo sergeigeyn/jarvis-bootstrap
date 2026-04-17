@@ -255,6 +255,14 @@ const SYSTEM_VARS = new Set([
   'SYNC_KEY', 'SYNC_URL', 'CLAUDE_MODEL',
 ]);
 
+// Опасные переменные — могут инжектить код в дочерние процессы
+const DANGEROUS_VARS = new Set([
+  'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES',
+  'NODE_OPTIONS', 'PYTHONPATH', 'PERL5LIB', 'RUBYLIB',
+  'BASH_ENV', 'ENV', 'PROMPT_COMMAND', 'HISTFILE',
+  'PATH', 'HOME', 'USER', 'SHELL',
+]);
+
 function getUserEnvVars() {
   const envPath = join(config.dataDir, '.env');
   if (!existsSync(envPath)) return [];
@@ -964,6 +972,10 @@ export function handleSettingsInput(chatId, text) {
     if (SYSTEM_VARS.has(name)) {
       waitingInput.delete(chatId);
       return { error: `<code>${name}</code> — системная переменная. Используй соответствующую кнопку в настройках.` };
+    }
+    if (DANGEROUS_VARS.has(name)) {
+      waitingInput.delete(chatId);
+      return { error: `<code>${name}</code> — опасная переменная (может инжектить код). Заблокировано.` };
     }
     waitingInput.set(chatId, { field: 'envVarValue', varName: name });
     return { success: `Имя: <code>${name}</code>\n\nТеперь введи <b>значение</b>:` };

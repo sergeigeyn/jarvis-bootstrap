@@ -38,11 +38,23 @@ export function getCurrentProject() {
 
 // ── Список проектов ──
 
+// Служебные папки workspace — НЕ проекты
+const WORKSPACE_SKIP = new Set([
+  'memory', 'knowledge', '.claude', '.git', 'node_modules',
+]);
+
 function getProjectsList() {
   const projects = [];
 
   if (existsSync(config.workspaceDir)) {
     projects.push('~/workspace');
+
+    // Подпапки workspace = проекты (кроме служебных)
+    const wsDirs = readdirSync(config.workspaceDir, { withFileTypes: true })
+      .filter(d => d.isDirectory() && !d.name.startsWith('.') && !WORKSPACE_SKIP.has(d.name))
+      .map(d => `~/workspace/${d.name}`)
+      .sort();
+    projects.push(...wsDirs);
   }
 
   if (existsSync(config.projectsDir)) {
@@ -158,7 +170,7 @@ export async function handleProjectsCallback(ctx, handleMessage) {
 
   if (data === 'projects:new') {
     await ctx.answerCallbackQuery();
-    await handleMessage(ctx, 'Создай новый проект. Спроси у меня название и описание.');
+    await handleMessage(ctx, 'Создай новый проект в ~/projects/<название>/. Спроси у меня название и описание. Инициализируй git.');
     return;
   }
 

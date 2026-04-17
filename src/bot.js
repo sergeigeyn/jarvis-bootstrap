@@ -86,6 +86,18 @@ async function handleResponse(ctx, response) {
   }
 }
 
+// ── Очередь сообщений ──
+
+const messageQueue = new Map(); // chatId → [{ ctx, promptText }]
+
+async function processQueue(chatId) {
+  const queue = messageQueue.get(chatId);
+  if (!queue || queue.length === 0) return;
+  const { ctx, promptText } = queue.shift();
+  if (queue.length === 0) messageQueue.delete(chatId);
+  await handleMessage(ctx, promptText);
+}
+
 // ── Основной обработчик ──
 
 async function handleMessage(ctx, promptText) {
@@ -105,8 +117,12 @@ async function handleMessage(ctx, promptText) {
 
   const session = getSession(ctx.chat.id);
 
+  // Очередь: если занят — ставим в очередь и показываем статус
   if (session.busy) {
-    await ctx.reply('Подожди, обрабатываю предыдущий запрос...');
+    const queue = messageQueue.get(ctx.chat.id) || [];
+    queue.push({ ctx, promptText });
+    messageQueue.set(ctx.chat.id, queue);
+    await ctx.reply('⏳ в очереди');
     return;
   }
 
@@ -117,18 +133,56 @@ async function handleMessage(ctx, promptText) {
   }, 4000);
   await ctx.replyWithChatAction('typing').catch(() => {});
 
+  // Прогресс-сообщение (одно, обновляемое)
+  let progressMsg = null;
+  let lastProgressText = '';
+
   session.send(promptText, {
+    onProgress: async ({ event, label, elapsed }) => {
+      let statusText;
+      if (event === 'thinking') {
+        statusText = `🤔 Мозгую... ${elapsed}с`;
+      } else if (event === 'tool_use') {
+        statusText = `${label} 🌚 ${elapsed}с`;
+      } else return;
+
+      // Не обновляем если текст не изменился (кроме таймера)
+      const statusBase = statusText.replace(/\d+с$/, '');
+      const lastBase = lastProgressText.replace(/\d+с$/, '');
+      if (statusBase === lastBase && elapsed - parseInt(lastProgressText.match(/(\d+)с$/)?.[1] || 0) < 5) return;
+
+      lastProgressText = statusText;
+      try {
+        if (progressMsg) {
+          await ctx.api.editMessageText(ctx.chat.id, progressMsg.message_id, statusText).catch(() => {});
+        } else {
+          progressMsg = await ctx.reply(statusText);
+        }
+      } catch { /* Telegram rate limit — пропускаем */ }
+    },
+
     onDone: async (response) => {
       clearInterval(typingInterval);
+      // Удаляем прогресс-сообщение
+      if (progressMsg) {
+        await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
+      }
       if (response?.trim()) {
         await handleResponse(ctx, response);
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
       }
+      // Обрабатываем очередь
+      processQueue(ctx.chat.id);
     },
     onError: async (err) => {
       clearInterval(typingInterval);
+      if (progressMsg) {
+        await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
+      }
       await ctx.reply(`Ошибка: ${err.message.slice(0, 500)}`);
+      // Обрабатываем очередь
+      processQueue(ctx.chat.id);
     },
     onCostWarning: async (cost) => {
       const limit = getDailyLimit();
@@ -299,6 +353,10 @@ bot.command('help', async (ctx) => {
 // ── Callback-кнопки (settings) ──
 
 bot.on('callback_query:data', async (ctx) => {
+  if (!isAdmin(ctx)) {
+    await ctx.answerCallbackQuery({ text: 'Доступ только для владельца' });
+    return;
+  }
   const data = ctx.callbackQuery.data;
 
   if (data.startsWith('settings:')) {

@@ -78,6 +78,52 @@ export function listEngines() {
 
 // ── Парсинг stream-json ──
 
+// Маппинг tool name → человекочитаемый статус
+const TOOL_LABELS = {
+  Read: 'Читаю файл',
+  Edit: 'Редактирую',
+  Write: 'Пишу файл',
+  Bash: 'Выполняю команду',
+  Glob: 'Ищу файлы',
+  Grep: 'Ищу в коде',
+  WebSearch: 'Ищу в интернете',
+  WebFetch: 'Загружаю страницу',
+  Agent: 'Запускаю агента',
+  TodoWrite: 'Обновляю задачи',
+};
+
+function parseStreamLine(line) {
+  try {
+    const obj = JSON.parse(line);
+
+    // Thinking
+    if (obj.type === 'assistant' && obj.message?.content) {
+      for (const block of obj.message.content) {
+        if (block.type === 'thinking') return { event: 'thinking' };
+        if (block.type === 'tool_use') {
+          const label = TOOL_LABELS[block.name] || block.name;
+          return { event: 'tool_use', tool: block.name, label };
+        }
+        if (block.type === 'text') return { event: 'text', text: block.text };
+      }
+    }
+
+    // Result
+    if (obj.type === 'result') {
+      return {
+        event: 'result',
+        text: obj.result || '',
+        sessionId: obj.session_id || null,
+        cost: obj.total_cost_usd || obj.cost_usd || 0,
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function parseStreamJson(raw) {
   const lines = raw.split('\n').filter(Boolean);
   let text = '';
@@ -85,31 +131,14 @@ function parseStreamJson(raw) {
   let sessionId = null;
 
   for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
+    const parsed = parseStreamLine(line);
+    if (!parsed) continue;
 
-      // Текст ассистента
-      if (obj.type === 'assistant' && obj.message?.content) {
-        for (const block of obj.message.content) {
-          if (block.type === 'text') text += block.text;
-        }
-      }
-
-      // Результат (финальный текст)
-      if (obj.type === 'result') {
-        if (obj.result) text = obj.result;
-        if (obj.session_id) sessionId = obj.session_id;
-        if (obj.cost_usd) totalCost += obj.cost_usd;
-        if (obj.total_cost_usd) totalCost = obj.total_cost_usd;
-      }
-
-      // Cost из отдельных сообщений
-      if (obj.cost_usd && obj.type !== 'result') {
-        totalCost += obj.cost_usd;
-      }
-
-    } catch {
-      // Не JSON — пропускаем (stderr может попасть)
+    if (parsed.event === 'text') text += parsed.text;
+    if (parsed.event === 'result') {
+      if (parsed.text) text = parsed.text;
+      if (parsed.sessionId) sessionId = parsed.sessionId;
+      if (parsed.cost) totalCost = parsed.cost;
     }
   }
 
@@ -129,7 +158,7 @@ class EngineSession {
     this.engine = ENGINES[config.engine];
   }
 
-  async send(prompt, { onDone, onError, onCostWarning, onCostPaused }) {
+  async send(prompt, { onDone, onError, onProgress, onCostWarning, onCostPaused }) {
     if (this.busy) {
       onError?.(new Error('Сессия занята, подожди...'));
       return;
@@ -143,6 +172,7 @@ class EngineSession {
 
     this.busy = true;
     this.lastActivity = Date.now();
+    this.startedAt = Date.now();
 
     // Автодетект auth mode при первом запросе
     detectAuthMode();
@@ -169,8 +199,29 @@ class EngineSession {
     this.process = proc;
     let stdout = '';
     let stderr = '';
+    let lineBuffer = '';
 
-    proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    proc.stdout.on('data', (chunk) => {
+      const data = chunk.toString();
+      stdout += data;
+
+      // Построчный парсинг для прогресс-статусов
+      if (this.engine.streaming && onProgress) {
+        lineBuffer += data;
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop(); // неполная строка — оставляем
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const parsed = parseStreamLine(line);
+          if (parsed && (parsed.event === 'thinking' || parsed.event === 'tool_use')) {
+            const elapsed = Math.round((Date.now() - this.startedAt) / 1000);
+            onProgress({ ...parsed, elapsed });
+          }
+        }
+      }
+    });
+
     proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
 
     proc.on('close', (code) => {
