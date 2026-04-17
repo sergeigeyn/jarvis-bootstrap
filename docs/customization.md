@@ -262,11 +262,11 @@ EOF
 
 | Переменная | Обязательна | Описание |
 |---|---|---|
-| ENGINE | Нет | Движок: claude / codex / gemini (дефолт: claude) |
+| ENGINE | Нет | Движок: claude / codex (дефолт: claude) |
 | BOT_TOKEN | Да | Telegram Bot Token от @BotFather |
-| ANTHROPIC_API_KEY | Да* | Ключ Anthropic (* зависит от ENGINE) |
+| ANTHROPIC_API_KEY | Да* | Ключ Anthropic (* для engine=claude, вариант API) |
+| CLAUDE_CODE_OAUTH_TOKEN | Да* | OAuth-токен подписки Claude Max (* альтернатива API-ключу) |
 | OPENAI_API_KEY | Да* | Ключ OpenAI (* для engine=codex) |
-| GOOGLE_API_KEY | Да* | Ключ Google (* для engine=gemini) |
 | AGENT_NAME | Нет | Имя агента (дефолт: Джарвис) |
 | ADMIN_ID | Нет | Telegram ID владельца |
 | TRUST_LEVEL | Нет | Ручной trust level: 0, 1, 2 |

@@ -38,10 +38,9 @@
 |---|---|---|---|
 | Claude Code | `claude` | $100/мес (Max) или API | Лучшее |
 | OpenAI Codex | `codex` | $20/мес (Plus) или API | Отличное |
-| Gemini CLI | `gemini` | Бесплатно (Google) | Хорошее |
 
-Все три движка работают с одними промптами, навыками и памятью.
-Выбор: `ENGINE=claude|codex|gemini` в `.env`.
+Оба движка работают с одними промптами, навыками и памятью.
+Выбор: `ENGINE=claude|codex` в `.env`. Claude поддерживает два типа авторизации: API-ключ (`ANTHROPIC_API_KEY`) и OAuth-токен подписки (`CLAUDE_CODE_OAUTH_TOKEN`).
 
 ## Поток сообщения
 
@@ -62,7 +61,6 @@ Telegram → bot.js → [media.js] → engine.js → [hooks.js] → CLI → от
 3. **Engine** → spawn CLI-процесса:
    - Claude: `claude --print --output-format text <prompt>`
    - Codex: `codex --full-auto --quiet <prompt>`
-   - Gemini: `gemini --noinput <prompt>`
 4. **Hooks (пост)** → проверка ответа на секреты, деструктивные команды
 5. **Постобработка** → парсинг медиа-маркеров `[ФОТО:]`, `[ФАЙЛ:]`
 6. **Исходящее** → медиа + текст → Telegram
@@ -73,8 +71,14 @@ Telegram → bot.js → [media.js] → engine.js → [hooks.js] → CLI → от
 Загрузка `.env` из `~/.jarvis/.env`, определение движка и API-ключа, валидация обязательных параметров.
 
 ### engine.js
-Абстракция над тремя CLI-агентами. Единый интерфейс `send(prompt)` → `onDone(response)`.
+Абстракция над CLI-агентами (Claude Code, Codex). Единый интерфейс `send(prompt)` → `onDone(response)`.
 Управление сессиями, таймаутами (5 мин), авто-очистка idle сессий (10 мин).
+
+### menu.js
+Главное меню с 8 inline-кнопками (Новая сессия, Проекты, Сессии, Навыки, Сервер, MCP, Настройки, Мониторинг). Показывается после `/start` для онбордённых пользователей.
+
+### projects.js
+Управление проектами: список из `~/workspace` и `~/projects/*`, пагинация (9 на страницу), переключение текущего проекта, сохранение в `~/.jarvis/project.json`.
 
 ### media.js
 Скачивание файлов из Telegram API, транскрипция голосовых через Deepgram Nova-2 (русский),
@@ -106,9 +110,11 @@ Telegram → bot.js → [media.js] → engine.js → [hooks.js] → CLI → от
 Расписания из `~/.jarvis/schedules.json`. Типы: daily, weekly, once.
 Проверка каждые 60 сек, защита от дублей (мин. 1 час между запусками).
 
+### settings.js
+Меню настроек: статус-карта (подключение, режим, модель, часовой пояс, лимит, расходы), 9 inline-кнопок. Подключение движков с пошаговой инструкцией. Автодетект OAuth-токенов и API-ключей. Очистка whitespace из токенов (защита от обрезки Telegram).
+
 ### bot.js
-Telegram бот (grammy + auto-retry): команды `/start`, `/reset`, `/status`,
-обработчики текста, голоса, фото, документов.
+Telegram бот (grammy + auto-retry): команды `/start`, `/settings`, `/status`, 18 команд через `setMyCommands`. Роутинг callback-кнопок (menu:*, settings:*, projects:*). Автодетект токенов в сообщениях и файлах. Обработчики текста, голоса, фото, документов.
 Typing-индикатор, разбивка длинных ответов (4000 символов), graceful shutdown.
 
 ## Идентичность агента (TELOS)

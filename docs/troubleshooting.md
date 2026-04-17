@@ -11,10 +11,17 @@ echo "BOT_TOKEN=123456:ABC-DEF..." >> ~/.jarvis/.env
 sudo systemctl restart jarvis-bot
 ```
 
-### "ANTHROPIC_API_KEY is required"
+### "ANTHROPIC_API_KEY is required" / движок не подключён
 ```bash
-# Добавь ключ:
+# Два варианта авторизации Claude:
+
+# Вариант A — подписка Max (OAuth-токен):
+# На своём компе: claude setup-token → скопируй токен → добавь в .env:
+echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-..." >> ~/.jarvis/.env
+
+# Вариант B — API key:
 echo "ANTHROPIC_API_KEY=sk-ant-..." >> ~/.jarvis/.env
+
 sudo systemctl restart jarvis-bot
 ```
 
@@ -28,6 +35,30 @@ sudo journalctl -u jarvis-bot -n 100 --no-pager
 # 2. Node.js < 22 → обнови: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
 # 3. Не установлены зависимости → cd ~/projects/jarvis-bootstrap && npm install
 ```
+
+### Токен в .env разбит на две строки (Claude Code exited with code 1)
+
+Telegram может вставить перенос строки в длинный токен. В `.env` токен оказывается на двух строках → бот читает только первую часть → ошибка авторизации.
+
+```bash
+# Проверь:
+grep -c CLAUDE_CODE_OAUTH_TOKEN ~/.jarvis/.env
+# Если 1 — ок. Если токен длинный, проверь что нет переноса:
+wc -L ~/.jarvis/.env  # самая длинная строка должна быть >100 символов
+
+# Починить — объединить строки:
+python3 -c "
+f=open('/home/client/.jarvis/.env','r'); c=f.read(); f.close()
+# Убрать переносы строк внутри значений
+import re
+c = re.sub(r'(sk-ant-oat[^\n]*)\n([^\n=]+)', r'\1\2', c)
+f=open('/home/client/.jarvis/.env','w'); f.write(c); f.close()
+print('Fixed')
+"
+sudo systemctl restart jarvis-bot
+```
+
+> **Примечание:** в коде бота это уже исправлено — `replace(/\s+/g, '')` убирает переносы строк из токенов при сохранении через Telegram. Проблема может возникнуть только если `.env` редактировали вручную.
 
 ## Бот не отвечает
 

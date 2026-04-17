@@ -1,6 +1,6 @@
 # Jarvis Bootstrap
 
-AI-агент в Telegram с тремя движками на выбор. Настраиваемая личность, память, навыки, расписания.
+AI-агент в Telegram с двумя движками на выбор. Настраиваемая личность, память, навыки, расписания.
 Код-гейты безопасности, динамический trust level, эволюция через фазы.
 
 > **Автоматический деплой через Telegram?** Используй [jarvis-installer](https://github.com/sergeigeyn/jarvis-installer) — wizard-бот, который создаёт VPS и ставит агента за 5-15 минут.
@@ -9,11 +9,10 @@ AI-агент в Telegram с тремя движками на выбор. Нас
 
 | | Движок | Стоимость | Качество |
 |---|---|---|---|
-| 🆓 | Gemini CLI | Бесплатно (Google) | Хорошее |
 | 💲 | OpenAI Codex | $20/мес (ChatGPT Plus) | Отличное |
-| ⭐ | Claude Code | $100/мес (Claude Max) | Лучшее |
+| ⭐ | Claude Code | $100/мес (Claude Max) или API | Лучшее |
 
-Все три движка работают с одними промптами, навыками и памятью. Переключение — одна строка в `.env`.
+Оба движка работают с одними промптами, навыками и памятью. Переключение через `/settings → Модель` или `ENGINE=` в `.env`.
 
 ## Установка
 
@@ -42,7 +41,6 @@ sudo apt install -y nodejs
 # Один из движков:
 npm install -g @anthropic-ai/claude-code  # Claude
 npm install -g @openai/codex              # Codex
-npm install -g @google/gemini-cli         # Gemini
 
 git clone https://github.com/sergeigeyn/jarvis-bootstrap.git
 cd jarvis-bootstrap && npm install
@@ -112,9 +110,11 @@ jarvis-bootstrap/
 ├── src/
 │   ├── bot.js          # Telegram бот (grammy), команды, роутинг
 │   ├── config.js       # Конфигурация и .env
-│   ├── engine.js       # Абстракция: Claude / Codex / Gemini
+│   ├── engine.js       # Абстракция: Claude / Codex
+│   ├── menu.js         # Главное меню (8 inline-кнопок)
+│   ├── projects.js     # Проекты: список, пагинация, переключение
 │   ├── onboarding.js   # Онбординг: профиль, знакомство, идентичность
-│   ├── settings.js     # Меню настроек (inline-клавиатура)
+│   ├── settings.js     # Настройки: статус-карта, подключение, модель
 │   ├── media.js        # Медиа: Deepgram, маркеры [ФОТО:], [ФАЙЛ:]
 │   ├── hooks.js        # Код-гейты: блок деструктивных команд, маскировка секретов
 │   ├── trust.js        # Динамический trust level (0→1→2)
@@ -190,25 +190,41 @@ sudo systemctl restart jarvis-bot     # перезапуск
 
 ## Смена движка
 
+Через Telegram: `/settings` → Модель → выбери движок → следуй инструкции.
+
+Или вручную в `~/.jarvis/.env`:
 ```bash
-# ~/.jarvis/.env:
+# Claude (подписка Max):
+ENGINE=claude
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+
+# Claude (API key):
+ENGINE=claude
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Codex:
 ENGINE=codex
 OPENAI_API_KEY=sk-...
-
+```
+```bash
 sudo systemctl restart jarvis-bot
 ```
 
 ## Roadmap
 
-- [x] Multi-engine (Claude / Codex / Gemini)
+- [x] Multi-engine (Claude / Codex)
 - [x] Telegram installer bot (Timeweb Cloud + Aéza Cloud)
 - [x] E2E деплой через Aéza — AlmaLinux, мульти-дистрибутив
 - [x] Код-гейты безопасности (hooks.js) — протестировано 16/16
 - [x] Динамический trust level — протестировано 16/16
 - [x] Онбординг — знакомство с владельцем при первом запуске
-- [x] Меню настроек (inline-клавиатура, /settings)
+- [x] Главное меню с 8 inline-кнопками (menu.js)
+- [x] Настройки: статус-карта, подключение, модель, режим (settings.js)
+- [x] Проекты: список, пагинация, переключение (projects.js)
 - [x] Полное меню команд (18 команд, setMyCommands)
 - [x] Контекст личности — engine знает кто владелец и кто агент
+- [x] OAuth-токен подписки (CLAUDE_CODE_OAUTH_TOKEN) + автодетект токенов
+- [ ] Предупреждение безопасности при отправке ключей в чат
 - [ ] Changelog в боте (уведомления об обновлениях)
 - [ ] Проактивный режим (утренние/вечерние сканы)
 - [ ] Авто-извлечение навыков из паттернов
