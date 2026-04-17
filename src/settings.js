@@ -688,7 +688,8 @@ export async function handleSettingsCallback(ctx) {
       .text('👤 Моё имя', 'settings:owner_name')
       .text('🤖 Имя агента', 'settings:agent_name')
       .row()
-      .text('🔄 Сброс онбординга', 'settings:reset')
+      .text('🔄 Перезагрузить', 'settings:restart')
+      .text('⚠️ Сброс онбординга', 'settings:reset')
       .row()
       .text('« Назад', 'settings:back');
 
@@ -717,6 +718,14 @@ export async function handleSettingsCallback(ctx) {
     waitingInput.set(chatId, { field: 'agentName' });
     await ctx.answerCallbackQuery();
     await ctx.reply('Напиши новое имя агента:');
+    return;
+  }
+
+  // ── Перезагрузка ──
+  if (data === 'settings:restart') {
+    await ctx.answerCallbackQuery();
+    await ctx.reply('🔄 Перезагружаюсь...');
+    setTimeout(() => process.exit(0), 1000);
     return;
   }
 
