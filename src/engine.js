@@ -30,7 +30,8 @@ function getUserEnvKeys() {
       const eq = trimmed.indexOf('=');
       if (eq === -1) continue;
       const key = trimmed.slice(0, eq).trim();
-      if (!SYSTEM_ENV_KEYS.has(key)) keys.push(key);
+      const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+      if (!SYSTEM_ENV_KEYS.has(key) && val) keys.push(key);
     }
     return keys;
   } catch { return []; }
