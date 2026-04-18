@@ -236,14 +236,20 @@ async function handleMessage(ctx, promptText) {
       } catch { /* Telegram rate limit — пропускаем */ }
     },
 
-    onDone: async (response) => {
+    onDone: async (response, meta = {}) => {
       clearInterval(typingInterval);
       // Удаляем прогресс-сообщение
       if (progressMsg) {
         await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
       }
       if (response?.trim()) {
-        await handleResponse(ctx, response, buildActionKeyboard());
+        // Кнопки только для задач > 5с
+        const keyboard = meta.elapsed > 5 ? buildActionKeyboard() : null;
+        await handleResponse(ctx, response, keyboard);
+        // Футер: время и стоимость
+        const costStr = meta.cost > 0 ? `$${meta.cost.toFixed(3)}` : '$0';
+        const footer = `🕐 ${meta.elapsed || 0}s · ${costStr}`;
+        await ctx.reply(footer).catch(() => {});
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
       }

@@ -313,7 +313,8 @@ class EngineSession {
           responseText = stdout.trim();
         }
 
-        onDone?.(responseText);
+        const elapsed = Math.round((Date.now() - this.startedAt) / 100) / 10; // 1 знак после точки
+        onDone?.(responseText, { cost, elapsed });
       } else {
         const errMsg = stderr.trim() || `${this.engine.name} exited with code ${code}`;
         console.error(`[engine:${config.engine}] error for chat ${this.chatId}: ${errMsg}`);
