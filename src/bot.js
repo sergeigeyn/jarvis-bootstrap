@@ -193,9 +193,9 @@ async function handleMessage(ctx, promptText) {
   }, 4000);
   await ctx.replyWithChatAction('typing').catch(() => {});
 
-  // Прогресс-сообщение (одно, обновляемое)
-  let progressMsg = null;
-  let lastProgressText = '';
+  // Прогресс-сообщение — показываем СРАЗУ, не ждём CLI
+  let progressMsg = await ctx.reply('🤔 Мозгую...').catch(() => null);
+  let lastProgressText = '🤔 Мозгую...';
 
   session.send(promptText, {
     onProgress: async ({ event, label, elapsed }) => {
