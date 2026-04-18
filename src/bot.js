@@ -259,15 +259,12 @@ async function handleMessage(ctx, promptText) {
   // Прогресс-сообщение — показываем СРАЗУ, не ждём CLI
   let progressMsg = await ctx.reply('🤔 Мозгую...').catch(() => null);
   let lastProgressText = '🤔 Мозгую...';
-  let toolUseCount = 0; // Счётчик использованных инструментов
-
   session.send(promptText, {
     onProgress: async ({ event, label, elapsed }) => {
       let statusText;
       if (event === 'thinking') {
         statusText = `🤔 Мозгую... ${elapsed}с`;
       } else if (event === 'tool_use') {
-        toolUseCount++;
         statusText = `${label} 🌚 ${elapsed}с`;
       } else return;
 
@@ -293,15 +290,17 @@ async function handleMessage(ctx, promptText) {
         await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
       }
       if (response?.trim()) {
-        // Футер: время + стоимость (только для API, не подписки)
+        // Футер: время + стоимость (всегда, если есть)
         const elapsed = meta.elapsed || 0;
         let footerContent = `⏱ ${elapsed}s`;
-        if (meta.authMode !== 'subscription' && meta.cost > 0) {
+        if (meta.cost > 0) {
           footerContent += ` · $${meta.cost.toFixed(3)}`;
         }
         const footer = `\n\n<blockquote>${footerContent}</blockquote>`;
-        // Кнопки только если агент реально работал (использовал инструменты)
-        const keyboard = toolUseCount > 0 ? buildActionKeyboard() : null;
+        // Кнопки только если агент упёрся в лимит turns (задача не завершена)
+        const maxTurns = 25;
+        const hitTurnLimit = (meta.numTurns || 0) >= maxTurns - 5; // 20+ из 25
+        const keyboard = hitTurnLimit ? buildActionKeyboard() : null;
         await handleResponse(ctx, response + footer, keyboard);
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');

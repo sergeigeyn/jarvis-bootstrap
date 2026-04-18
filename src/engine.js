@@ -147,6 +147,8 @@ function parseStreamLine(line) {
         errors: obj.errors || [],
         sessionId: obj.session_id || null,
         cost: obj.total_cost_usd || obj.cost_usd || 0,
+        numTurns: obj.num_turns || 0,
+        subtype: obj.subtype || null,
       };
     }
 
@@ -163,8 +165,16 @@ function parseStreamJson(raw) {
   let sessionId = null;
   let isError = false;
   let errors = [];
+  let numTurns = 0;
+  let turnCount = 0; // собственный подсчёт turns из стрима
 
   for (const line of lines) {
+    // Считаем assistant-сообщения (каждое = один turn)
+    try {
+      const obj = JSON.parse(line);
+      if (obj.type === 'assistant') turnCount++;
+    } catch { /* skip */ }
+
     const parsed = parseStreamLine(line);
     if (!parsed) continue;
 
@@ -174,10 +184,14 @@ function parseStreamJson(raw) {
       if (parsed.sessionId) sessionId = parsed.sessionId;
       if (parsed.cost) totalCost = parsed.cost;
       if (parsed.isError) { isError = true; errors = parsed.errors; }
+      if (parsed.numTurns) numTurns = parsed.numTurns;
     }
   }
 
-  return { text: text.trim(), cost: totalCost, sessionId, isError, errors };
+  // Используем num_turns из result если есть, иначе — собственный подсчёт
+  const finalTurns = numTurns || turnCount;
+
+  return { text: text.trim(), cost: totalCost, sessionId, isError, errors, numTurns: finalTurns };
 }
 
 // ── Сессии ──
@@ -315,7 +329,8 @@ class EngineSession {
         }
 
         const elapsed = Math.round((Date.now() - this.startedAt) / 100) / 10; // 1 знак после точки
-        onDone?.(responseText, { cost, elapsed, authMode });
+        const numTurns = parsed?.numTurns || 0;
+        onDone?.(responseText, { cost, elapsed, authMode, numTurns });
       } else {
         const errMsg = stderr.trim() || `${this.engine.name} exited with code ${code}`;
         console.error(`[engine:${config.engine}] error for chat ${this.chatId}: ${errMsg}`);
