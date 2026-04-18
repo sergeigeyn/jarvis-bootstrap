@@ -166,14 +166,37 @@ function mdToHtml(text) {
   result = result.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   // *italic* → <i>italic</i> (но не внутри уже конвертированных тегов)
   result = result.replace(/(?<![<\w])(\*)(?!\*)(.+?)\1(?![>*])/g, '<i>$2</i>');
+  // [text](url) → <a href="url">text</a>
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
   // ### heading → <b>heading</b>
   result = result.replace(/^#{1,3}\s+(.+)$/gm, '<b>$1</b>');
-  // - list → • list
-  result = result.replace(/^[\s]*[-*]\s+/gm, '• ');
+  // - list → [x] list
+  result = result.replace(/^(\s*)[-*]\s+/gm, '$1[x] ');
 
   // 4. Возвращаем code-блоки на место
   result = result.replace(/\x00CB(\d+)\x00/g, (_, i) => codeBlocks[i]);
+
+  // 5. Авто-обёртка @mentions и имён файлов в <code> (вне code-блоков)
+  result = autoCodeWrap(result);
   return result;
+}
+
+// Оборачивает @mentions и имена файлов (.js, .py, ...) в <code>, не трогая содержимое <code>/<pre>
+function autoCodeWrap(html) {
+  const preserved = [];
+  let text = html.replace(/<(code|pre)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi, (m) => {
+    preserved.push(m);
+    return `\x00WE${preserved.length - 1}\x00`;
+  });
+  // @username (не внутри тегов)
+  text = text.replace(/(?<![<\/\w.])(@[a-zA-Z0-9_]{2,})(?![^<]*>)/g, '<code>$1</code>');
+  // filename.ext (распространённые расширения)
+  text = text.replace(/(?<![<\/\w])([\w.-]+\.(md|ts|js|py|json|yaml|yml|toml|txt|csv|sql|sh|html|css|xml|env|log|cjs|mjs|jsx|tsx))\b(?![^<]*>)/gi, '<code>$1</code>');
+  // Возвращаем code/pre блоки
+  for (let i = 0; i < preserved.length; i++) {
+    text = text.replace(`\x00WE${i}\x00`, preserved[i]);
+  }
+  return text;
 }
 
 // ── Полная проверка ответа ──
