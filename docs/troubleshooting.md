@@ -60,6 +60,24 @@ sudo systemctl restart jarvis-bot
 
 > **Примечание:** в коде бота это уже исправлено — `replace(/\s+/g, '')` убирает переносы строк из токенов при сохранении через Telegram. Проблема может возникнуть только если `.env` редактировали вручную.
 
+## Ответ пропадает (прогресс виден, потом тишина)
+
+### InlineKeyboard не импортирован
+Если `buildActionKeyboard()` вызывает `ReferenceError: InlineKeyboard is not defined`, прогресс-сообщение удаляется, но ответ не отправляется. Проверь импорт в bot.js:
+```javascript
+import { Bot, InputFile, InlineKeyboard } from 'grammy';
+```
+
+### Raw JSON вместо ответа
+Если вместо ответа приходит JSON — парсер stream-json не обработал ошибку CLI. Проверь что `parseStreamJson` обрабатывает `is_error` и `errors` из result-объекта.
+
+### Протухшая сессия
+Если CLI вернул "No conversation found with session ID" — sessionId протух. Engine.js автоматически ретраит один раз без --resume. Если не помогло:
+```bash
+# В Telegram:
+/clear
+```
+
 ## Бот не отвечает
 
 ### Claude Code не установлен
@@ -100,6 +118,14 @@ grep DEEPGRAM ~/.jarvis/.env
 - Слишком тихая запись
 - Язык не русский (по умолчанию model=nova-2, language=ru)
 - Deepgram ключ истёк
+
+## Агент не читает фото/медиа
+
+### Permission denied на .media/
+CLI в режиме acceptEdits блокирует Read для файлов вне CWD. Решение — `bypassPermissions` (уже включён в engine.js). Фото сохраняются в `~/workspace/.media/`, промпт содержит путь для Read.
+
+### Фото не распознаётся
+Claude не умеет «видеть» фото из файловой системы напрямую — он читает файл через Read tool как binary. Для анализа изображений фото должно быть передано через мультимодальный API (не CLI). Текущая реализация: CLI читает файл, пытается интерпретировать.
 
 ## Медиа не отправляются
 
