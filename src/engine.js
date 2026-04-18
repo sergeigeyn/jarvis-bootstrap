@@ -28,7 +28,7 @@ const ENGINES = {
     buildArgs: (prompt, sessionId, permMode) => {
       const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose',
         '--max-turns', '25',
-        '--permission-mode', permMode === 'auto' ? 'acceptEdits' : 'bypassPermissions',
+        '--permission-mode', 'bypassPermissions',
         '--allowedTools', BASE_ALLOWED_TOOLS,
         '--disallowedTools', DISALLOWED_TOOLS.join(','),
       ];

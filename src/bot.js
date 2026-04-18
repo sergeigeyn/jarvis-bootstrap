@@ -36,13 +36,16 @@ function isAdmin(ctx) {
   return ctx.from?.id === config.adminId;
 }
 
-async function sendLong(ctx, text, parseMode = 'HTML') {
+async function sendLong(ctx, text, parseMode = 'HTML', replyMarkup = null) {
   const chunks = splitMessage(text, config.messageMaxLen);
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const isLast = i === chunks.length - 1;
+    const opts = { parse_mode: parseMode };
+    if (isLast && replyMarkup) opts.reply_markup = replyMarkup;
     try {
-      await ctx.reply(chunk, { parse_mode: parseMode });
+      await ctx.reply(chunks[i], opts);
     } catch {
-      await ctx.reply(chunk);
+      await ctx.reply(chunks[i]);
     }
   }
 }
@@ -73,7 +76,7 @@ function splitMessage(text, maxLen) {
 
 // ── Обработка ответа (hooks → медиа-маркеры → текст) ──
 
-async function handleResponse(ctx, response) {
+async function handleResponse(ctx, response, replyMarkup = null) {
   const safe = processResponse(response);
   const { cleanText, markers } = parseMediaMarkers(safe);
 
@@ -82,8 +85,20 @@ async function handleResponse(ctx, response) {
   }
 
   if (cleanText) {
-    await sendLong(ctx, cleanText);
+    await sendLong(ctx, cleanText, 'HTML', replyMarkup);
+  } else if (markers.length > 0 && replyMarkup) {
+    // Если ответ — только медиа, кнопки отдельным сообщением
+    await ctx.reply('👆', { reply_markup: replyMarkup });
   }
+}
+
+// ── Кнопки действий после ответа ──
+
+function buildActionKeyboard() {
+  return new InlineKeyboard()
+    .text('▶ Далее', 'action:continue')
+    .text('⏹ Стоп', 'action:stop')
+    .text('💬 Комментарий', 'action:comment');
 }
 
 // ── Очередь сообщений ──
@@ -228,7 +243,7 @@ async function handleMessage(ctx, promptText) {
         await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
       }
       if (response?.trim()) {
-        await handleResponse(ctx, response);
+        await handleResponse(ctx, response, buildActionKeyboard());
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
       }
@@ -426,6 +441,27 @@ bot.on('callback_query:data', async (ctx) => {
 
   if (data.startsWith('projects:')) {
     await handleProjectsCallback(ctx, handleMessage);
+    return;
+  }
+
+  if (data.startsWith('action:')) {
+    // Убираем кнопки
+    await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    await ctx.answerCallbackQuery();
+
+    if (data === 'action:continue') {
+      await handleMessage(ctx, 'Продолжай.');
+    } else if (data === 'action:stop') {
+      const session = getSession(ctx.chat.id);
+      if (session.busy) {
+        session.kill();
+        await ctx.reply('Задача остановлена.');
+      } else {
+        await ctx.reply('Нет активной задачи.');
+      }
+    } else if (data === 'action:comment') {
+      // Следующее сообщение пойдёт с контекстом сессии
+    }
     return;
   }
 
