@@ -1,5 +1,5 @@
 // Обработка медиа: входящее (голос, фото, файлы) и исходящее (маркеры)
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { config } from './config.js';
 import https from 'https';
@@ -7,6 +7,31 @@ import http from 'http';
 
 const MEDIA_DIR = join(config.workspaceDir, '.media');
 if (!existsSync(MEDIA_DIR)) mkdirSync(MEDIA_DIR, { recursive: true });
+
+// ── Авто-очистка старых медиафайлов (>24ч) ──
+
+const MEDIA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function cleanupOldMedia() {
+  try {
+    const now = Date.now();
+    const files = readdirSync(MEDIA_DIR);
+    let cleaned = 0;
+    for (const file of files) {
+      try {
+        const stat = statSync(join(MEDIA_DIR, file));
+        if (now - stat.mtimeMs > MEDIA_MAX_AGE_MS) {
+          unlinkSync(join(MEDIA_DIR, file));
+          cleaned++;
+        }
+      } catch { /* skip */ }
+    }
+    if (cleaned > 0) console.log(`[media] cleaned ${cleaned} old files`);
+  } catch { /* skip */ }
+}
+
+cleanupOldMedia();
+setInterval(cleanupOldMedia, 60 * 60 * 1000);
 
 // ── Скачивание файла из Telegram ──
 

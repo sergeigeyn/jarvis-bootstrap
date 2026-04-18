@@ -36,6 +36,11 @@ export function getCurrentProject() {
   return currentProject;
 }
 
+export function switchProject(name) {
+  currentProject = name;
+  saveCurrentProject();
+}
+
 // Резолвим имя проекта → абсолютный путь для CWD движка
 export function resolveProjectDir() {
   if (!currentProject) return config.workspaceDir;
@@ -196,8 +201,7 @@ export async function handleProjectsCallback(ctx, handleMessage) {
       return;
     }
 
-    currentProject = projectName;
-    saveCurrentProject();
+    switchProject(projectName);
     await ctx.answerCallbackQuery({ text: `Проект: ${projectName}` });
     try {
       await ctx.editMessageText(getProjectsText(), {

@@ -9,7 +9,7 @@ import { getTrustLevel, getTrustName, getTrustState, recordSession } from './tru
 import { startScheduler } from './scheduler.js';
 import {
   getTodayCost, getCostHistory, getDailyLimit, getPermissionMode,
-  getTimezone, isCostPaused, unpauseCost,
+  getTimezone, isCostPaused, unpauseCost, setSessionId,
 } from './state.js';
 import {
   isOnboarded, getOnboardingState, setOnboardingState, clearOnboardingState,
@@ -22,12 +22,19 @@ import {
   buildEnvVarsMessage,
 } from './settings.js';
 import { buildMainMenuKeyboard, getMainMenuText, getReturningMenuText } from './menu.js';
-import { buildProjectsKeyboard, getProjectsText, handleProjectsCallback } from './projects.js';
+import { buildProjectsKeyboard, getProjectsText, handleProjectsCallback, switchProject, getCurrentProject } from './projects.js';
 
 const bot = new Bot(config.botToken);
 const engineInfo = getEngineInfo(config.engine);
 
 bot.api.config.use(autoRetry());
+
+bot.catch((err) => {
+  const ctx = err.ctx;
+  const e = err.error;
+  console.error(`[bot] error in ${ctx?.update?.update_id}: ${e.message || e}`);
+  ctx?.reply?.('Произошла ошибка. Попробуй ещё раз или /clear.').catch(() => {});
+});
 
 // ── Хелперы ──
 
@@ -45,7 +52,9 @@ async function sendLong(ctx, text, parseMode = 'HTML', replyMarkup = null) {
     try {
       await ctx.reply(chunks[i], opts);
     } catch {
-      await ctx.reply(chunks[i]);
+      // HTML невалидный — отправляем без тегов
+      const plain = chunks[i].replace(/<[^>]+>/g, '');
+      await ctx.reply(plain).catch(() => {});
     }
   }
 }
@@ -321,13 +330,29 @@ const PROMPT_COMMANDS = {
 for (const [cmd, { prompt }] of Object.entries(PROMPT_COMMANDS)) {
   bot.command(cmd, async (ctx) => {
     if (!isAdmin(ctx)) return;
-    // /newtask — сначала сбрасываем сессию
-    if (cmd === 'newtask') killSession(ctx.chat.id);
+    // /newtask — сначала сбрасываем сессию (и persistентный sessionId)
+    if (cmd === 'newtask') { killSession(ctx.chat.id); setSessionId(null); }
     await handleMessage(ctx, prompt);
   });
 }
 
 // ── Команды (с собственной логикой) ──
+
+bot.command('project', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const name = ctx.match?.trim();
+  if (!name) {
+    // Без аргумента — показать меню проектов
+    await ctx.reply(getProjectsText(), {
+      parse_mode: 'HTML',
+      reply_markup: buildProjectsKeyboard(),
+    });
+    return;
+  }
+  switchProject(name);
+  killSession(ctx.chat.id);
+  await ctx.reply(`Проект: <b>${name}</b>. Сессия сброшена.`, { parse_mode: 'HTML' });
+});
 
 bot.command('start', async (ctx) => {
   if (!isAdmin(ctx)) {
@@ -358,12 +383,14 @@ bot.command('settings', async (ctx) => {
 
 bot.command('clear', async (ctx) => {
   killSession(ctx.chat.id);
+  setSessionId(null);
   await ctx.reply('Контекст сброшен. Новая сессия.');
 });
 
 // /reset — алиас для /clear (обратная совместимость)
 bot.command('reset', async (ctx) => {
   killSession(ctx.chat.id);
+  setSessionId(null);
   await ctx.reply('Контекст сброшен. Новая сессия.');
 });
 
@@ -810,7 +837,8 @@ bot.start({
       { command: 'stop', description: 'Остановить задачу' },
       { command: 'clear', description: 'Сбросить контекст' },
       { command: 'undo', description: 'Отменить правку' },
-      { command: 'projects', description: 'Проекты' },
+      { command: 'project', description: 'Переключить проект' },
+      { command: 'projects', description: 'Проекты (меню)' },
       { command: 'sessions', description: 'Сессии' },
       { command: 'connect', description: 'VS Code туннель' },
       { command: 'recovery', description: 'Аварийный доступ к серверу' },
