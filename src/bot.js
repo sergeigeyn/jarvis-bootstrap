@@ -631,9 +631,8 @@ bot.on('message:photo', async (ctx) => {
 
   addToBatch(ctx.chat.id, ctx, async () => {
     const filepath = await downloadFile(bot, largest.file_id, '.jpg');
-    const prompt = `Пользователь отправил фото: ${filepath}\n` +
-      (caption ? `Подпись: ${caption}\n` : '') +
-      `Используй Read tool чтобы посмотреть изображение.`;
+    const prompt = `Пользователь отправил фото. Файл уже сохранён — открой через Read:\nФото: ${filepath}` +
+      (caption ? `\nПодпись: ${caption}` : '');
     return { type: 'photo', prompt };
   });
 });
@@ -710,7 +709,7 @@ bot.on('message:document', async (ctx) => {
 
   addToBatch(chatId, ctx, async () => {
     const filepath = await downloadFile(bot, doc.file_id, ext);
-    const prompt = `Пользователь отправил файл: ${filepath}\nИмя: ${fileName}\nПодпись: ${caption}\nПрочитай файл и ответь.`;
+    const prompt = `Пользователь отправил файл. Файл уже сохранён — открой через Read:\nФайл: ${filepath}\nИмя: ${fileName}\nПодпись: ${caption}`;
     return { type: 'document', prompt };
   });
 });
