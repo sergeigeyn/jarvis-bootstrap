@@ -244,13 +244,15 @@ async function handleMessage(ctx, promptText) {
         await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
       }
       if (response?.trim()) {
-        await handleResponse(ctx, response);
-        // Футер: время и стоимость + кнопки (только > 5с)
-        const costStr = meta.cost > 0 ? `$${meta.cost.toFixed(3)}` : '$0';
-        const footer = `🕐 ${meta.elapsed || 0}s · ${costStr}`;
-        const keyboard = meta.elapsed > 5 ? buildActionKeyboard() : null;
-        const footerOpts = keyboard ? { reply_markup: keyboard } : {};
-        await ctx.reply(footer, footerOpts).catch(() => {});
+        // Футер: время + стоимость (только для API, не подписки)
+        const elapsed = meta.elapsed || 0;
+        let footer = `\n\n🕐 ${elapsed}s`;
+        if (meta.authMode !== 'subscription' && meta.cost > 0) {
+          footer += ` · $${meta.cost.toFixed(3)}`;
+        }
+        // Кнопки только для задач > 5с
+        const keyboard = elapsed > 5 ? buildActionKeyboard() : null;
+        await handleResponse(ctx, response + footer, keyboard);
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
       }

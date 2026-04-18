@@ -210,7 +210,7 @@ class EngineSession {
     this.startedAt = Date.now();
 
     // Автодетект auth mode при первом запросе
-    detectAuthMode();
+    const authMode = detectAuthMode();
 
     // Инъекция контекста
     const owner = getOwnerName();
@@ -314,7 +314,7 @@ class EngineSession {
         }
 
         const elapsed = Math.round((Date.now() - this.startedAt) / 100) / 10; // 1 знак после точки
-        onDone?.(responseText, { cost, elapsed });
+        onDone?.(responseText, { cost, elapsed, authMode });
       } else {
         const errMsg = stderr.trim() || `${this.engine.name} exited with code ${code}`;
         console.error(`[engine:${config.engine}] error for chat ${this.chatId}: ${errMsg}`);
