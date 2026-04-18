@@ -220,6 +220,7 @@ async function handleMessage(ctx, promptText) {
   // Прогресс-сообщение — показываем СРАЗУ, не ждём CLI
   let progressMsg = await ctx.reply('🤔 Мозгую...').catch(() => null);
   let lastProgressText = '🤔 Мозгую...';
+  let toolUseCount = 0; // Счётчик использованных инструментов
 
   session.send(promptText, {
     onProgress: async ({ event, label, elapsed }) => {
@@ -227,6 +228,7 @@ async function handleMessage(ctx, promptText) {
       if (event === 'thinking') {
         statusText = `🤔 Мозгую... ${elapsed}с`;
       } else if (event === 'tool_use') {
+        toolUseCount++;
         statusText = `${label} 🌚 ${elapsed}с`;
       } else return;
 
@@ -258,8 +260,8 @@ async function handleMessage(ctx, promptText) {
         if (meta.authMode !== 'subscription' && meta.cost > 0) {
           footer += ` · $${meta.cost.toFixed(3)}`;
         }
-        // Кнопки только для задач > 5с
-        const keyboard = elapsed > 5 ? buildActionKeyboard() : null;
+        // Кнопки только если агент реально работал (использовал инструменты)
+        const keyboard = toolUseCount > 0 ? buildActionKeyboard() : null;
         await handleResponse(ctx, response + footer, keyboard);
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
