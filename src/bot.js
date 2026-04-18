@@ -265,10 +265,11 @@ async function handleMessage(ctx, promptText) {
       if (response?.trim()) {
         // Футер: время + стоимость (только для API, не подписки)
         const elapsed = meta.elapsed || 0;
-        let footer = `\n\n🕐 ${elapsed}s`;
+        let footerContent = `⏱ ${elapsed}s`;
         if (meta.authMode !== 'subscription' && meta.cost > 0) {
-          footer += ` · $${meta.cost.toFixed(3)}`;
+          footerContent += ` · $${meta.cost.toFixed(3)}`;
         }
+        const footer = `\n\n<blockquote>${footerContent}</blockquote>`;
         // Кнопки только если агент реально работал (использовал инструменты)
         const keyboard = toolUseCount > 0 ? buildActionKeyboard() : null;
         await handleResponse(ctx, response + footer, keyboard);
