@@ -43,11 +43,19 @@ export function resolveProjectDir() {
   // ~/workspace или ~/workspace/subfolder
   if (currentProject.startsWith('~/workspace')) {
     const rel = currentProject.replace('~/workspace', '');
-    return rel ? join(config.workspaceDir, rel.slice(1)) : config.workspaceDir;
+    if (rel) {
+      const resolved = join(config.workspaceDir, rel.slice(1));
+      // Защита от path traversal (../../)
+      if (!resolved.startsWith(config.workspaceDir)) return config.workspaceDir;
+      return resolved;
+    }
+    return config.workspaceDir;
   }
 
-  // Имя проекта из ~/projects/
-  const projectPath = join(config.projectsDir, currentProject);
+  // Имя проекта из ~/projects/ — защита от ../
+  const safeName = currentProject.replace(/\.\./g, '').replace(/[\/\\]/g, '');
+  const projectPath = join(config.projectsDir, safeName);
+  if (!projectPath.startsWith(config.projectsDir)) return config.workspaceDir;
   if (existsSync(projectPath)) return projectPath;
 
   // fallback

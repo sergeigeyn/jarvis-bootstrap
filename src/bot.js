@@ -104,11 +104,19 @@ function buildActionKeyboard() {
 
 // ── Очередь сообщений ──
 
-const messageQueue = new Map(); // chatId → [{ ctx, promptText }]
+const messageQueue = new Map(); // chatId → [{ ctx, promptText, addedAt }]
+const QUEUE_TTL_MS = 3 * 60 * 1000; // 3 минуты — после этого сообщение протухает
 
 async function processQueue(chatId) {
   const queue = messageQueue.get(chatId);
   if (!queue || queue.length === 0) return;
+  // Убираем протухшие
+  const now = Date.now();
+  while (queue.length > 0 && now - queue[0].addedAt > QUEUE_TTL_MS) {
+    const stale = queue.shift();
+    stale.ctx.reply('⏳ Сообщение устарело (>3 мин в очереди), пропущено.').catch(() => {});
+  }
+  if (queue.length === 0) { messageQueue.delete(chatId); return; }
   const { ctx, promptText } = queue.shift();
   if (queue.length === 0) messageQueue.delete(chatId);
   await handleMessage(ctx, promptText);
@@ -196,7 +204,7 @@ async function handleMessage(ctx, promptText) {
   // Очередь: если занят — ставим в очередь и показываем статус
   if (session.busy) {
     const queue = messageQueue.get(ctx.chat.id) || [];
-    queue.push({ ctx, promptText });
+    queue.push({ ctx, promptText, addedAt: Date.now() });
     messageQueue.set(ctx.chat.id, queue);
     await ctx.reply('⏳ в очереди');
     return;
@@ -571,6 +579,12 @@ bot.on('message:text', async (ctx) => {
   // 2. Settings — ждём ввод (имя владельца / агента / ключ движка)
   const waiting = getWaitingInput(chatId);
   if (waiting) {
+    // Отмена ввода
+    if (/^(отмена|cancel|отмени|назад)$/i.test(text.trim())) {
+      clearWaitingInput(chatId);
+      await ctx.reply('Отменено.');
+      return;
+    }
     // Если токен обёрнут в бэктик — извлечь и склеить все code entities
     let inputText = text;
     if ((waiting.field === 'engineKey' || waiting.field === 'envVarValue') && ctx.message.entities) {
@@ -647,6 +661,22 @@ bot.on('message:text', async (ctx) => {
   addToBatch(chatId, ctx, async () => ({ type: 'text', prompt: text }));
 });
 
+// ── Отредактированные сообщения ──
+
+bot.on('edited_message:text', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const text = ctx.update.edited_message.text;
+  if (text.startsWith('/')) return;
+  const chatId = ctx.chat.id;
+  const session = getSession(chatId);
+  // Если агент не занят — обработать как новое сообщение с пометкой
+  if (!session.busy) {
+    const prompt = `[Пользователь отредактировал предыдущее сообщение]\n${text}`;
+    addToBatch(chatId, ctx, async () => ({ type: 'text', prompt }));
+  }
+  // Если занят — игнорируем, чтобы не путать контекст
+});
+
 // ── Голосовые ──
 
 bot.on('message:voice', async (ctx) => {
@@ -654,15 +684,18 @@ bot.on('message:voice', async (ctx) => {
   const fileId = ctx.message.voice.file_id;
 
   addToBatch(ctx.chat.id, ctx, async () => {
-    if (!config.deepgramKey) {
-      return { type: 'error', message: '🔐 Голос не распознан — добавь DEEPGRAM_API_KEY в /settings → 🔑 Переменные' };
-    }
     const filepath = await downloadFile(bot, fileId, '.ogg');
-    const transcript = await transcribeVoice(filepath);
-    if (transcript.startsWith('[')) {
-      return { type: 'error', message: transcript };
+    // Deepgram — быстрый специализированный STT
+    if (config.deepgramKey) {
+      const transcript = await transcribeVoice(filepath);
+      if (!transcript.startsWith('[')) {
+        return { type: 'voice', prompt: transcript, transcript };
+      }
+      // Deepgram ошибся — fallback на CLI
     }
-    return { type: 'voice', prompt: transcript, transcript };
+    // Fallback: отправляем аудиофайл в CLI — агент сам расшифрует через доступные API
+    const prompt = `Пользователь отправил голосовое сообщение. Аудиофайл: ${filepath}\nРасшифруй содержимое и ответь на запрос пользователя.`;
+    return { type: 'text', prompt };
   });
 });
 
