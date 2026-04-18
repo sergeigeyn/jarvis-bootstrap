@@ -1,5 +1,5 @@
 // Jarvis Bootstrap — Telegram бот с поддержкой Claude / Codex / Gemini
-import { Bot, InputFile } from 'grammy';
+import { Bot, InputFile, InlineKeyboard } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { config } from './config.js';
 import { getSession, killSession, getEngineInfo } from './engine.js';
