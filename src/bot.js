@@ -314,7 +314,6 @@ async function handleMessage(ctx, promptText) {
 const PROMPT_COMMANDS = {
   newtask:  { prompt: 'Начинаем новую задачу. Спроси что нужно сделать.', description: 'Новая задача' },
   undo:     { prompt: 'Отмени последнее изменение (git). Покажи что отменил.', description: 'Отменить правку' },
-  projects: { prompt: 'Покажи список проектов в ~/projects/. Для каждого — краткое описание если есть README или package.json.', description: 'Проекты' },
   sessions: { prompt: 'Покажи информацию об активных сессиях и последней активности.', description: 'Сессии' },
   connect:  { prompt: 'Настрой VS Code туннель для удалённого доступа к серверу. Используй code tunnel CLI.', description: 'VS Code туннель' },
   recovery: { prompt: 'Покажи SSH-доступ к серверу: IP, порт, пользователь. Проверь что SSH работает.', description: 'Аварийный доступ' },
@@ -342,16 +341,36 @@ bot.command('project', async (ctx) => {
   if (!isAdmin(ctx)) return;
   const name = ctx.match?.trim();
   if (!name) {
-    // Без аргумента — показать меню проектов
     await ctx.reply(getProjectsText(), {
       parse_mode: 'HTML',
       reply_markup: buildProjectsKeyboard(),
     });
     return;
   }
+  // Валидация: проверяем что проект существует
+  const { existsSync } = await import('fs');
+  const { join } = await import('path');
+  const isWorkspace = name.startsWith('~/workspace');
+  const projectPath = isWorkspace
+    ? join(config.home, name.replace('~', ''))
+    : join(config.projectsDir, name);
+  if (!existsSync(projectPath)) {
+    await ctx.reply(`Проект <code>${name}</code> не найден. Используй /project без аргумента для списка.`, { parse_mode: 'HTML' });
+    return;
+  }
   switchProject(name);
   killSession(ctx.chat.id);
+  setSessionId(null);
   await ctx.reply(`Проект: <b>${name}</b>. Сессия сброшена.`, { parse_mode: 'HTML' });
+});
+
+// /projects — алиас для /project (inline-меню)
+bot.command('projects', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  await ctx.reply(getProjectsText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildProjectsKeyboard(),
+  });
 });
 
 bot.command('start', async (ctx) => {
@@ -458,11 +477,13 @@ bot.command('help', async (ctx) => {
     .join('\n');
   await ctx.reply(
     `<b>Команды</b>\n\n` +
-    `/start — Приветствие\n` +
+    `/start — Меню\n` +
+    `/project — Проекты (переключение)\n` +
     `/stop — Остановить задачу\n` +
     `/clear — Сбросить контекст\n` +
     `/settings — Настройки\n` +
     `/status — Статус системы\n` +
+    `/cost — Расходы за день\n` +
     `\n` +
     `${promptCmds}\n` +
     `\n` +
@@ -878,8 +899,7 @@ bot.start({
       { command: 'stop', description: 'Остановить задачу' },
       { command: 'clear', description: 'Сбросить контекст' },
       { command: 'undo', description: 'Отменить правку' },
-      { command: 'project', description: 'Переключить проект' },
-      { command: 'projects', description: 'Проекты (меню)' },
+      { command: 'project', description: 'Проект (переключить/меню)' },
       { command: 'sessions', description: 'Сессии' },
       { command: 'connect', description: 'VS Code туннель' },
       { command: 'recovery', description: 'Аварийный доступ к серверу' },

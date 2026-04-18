@@ -93,7 +93,7 @@ node src/bot.js
 | `/stop` | Остановить задачу | Логика |
 | `/clear` | Сбросить контекст | Логика |
 | `/undo` | Отменить правку (git) | Prompt → engine |
-| `/projects` | Список проектов | Prompt → engine |
+| `/project` | Переключить проект / меню | Логика |
 | `/sessions` | Активные сессии | Prompt → engine |
 | `/connect` | VS Code туннель | Prompt → engine |
 | `/recovery` | Аварийный доступ к серверу | Prompt → engine |
@@ -252,6 +252,12 @@ sudo systemctl restart jarvis-bot
 - [x] Инлайн-кнопки после ответа (Далее / Стоп / Комментарий)
 - [x] Проекты: сканирование подпапок workspace + создание в ~/projects/
 - [x] Проекты: фильтрация системных проектов (bootstrap, installer, helper)
+- [x] `/project name` — быстрое переключение проекта одной командой
+- [x] Кнопки только при использовании инструментов (не по таймеру)
+- [x] Обработка видео, стикеров, аудио (раньше игнорировались)
+- [x] Авто-очистка медиафайлов (>24ч)
+- [x] bot.catch() — graceful error handling
+- [x] HTML fallback — стрипает теги при ошибке парсинга
 
 ### Фаза 2: Паритет с IIA
 - [x] **state.js** — персистентный стейт (state.json): сессии, расходы, режим, authMode
@@ -264,6 +270,10 @@ sudo systemctl restart jarvis-bot
 - [x] **Error isolation** — ошибки CLI не утекают как raw JSON в чат
 - [x] **Auth mode** — автодетект subscription vs api-key, persist в state.json
 - [x] **Opus 4.7** — дефолтная модель, 1M context, xhigh effort
+- [x] **Retry + watchdog** — авто-ретрай транзиентных ошибок, watchdog на зависший CLI (6 мин)
+- [x] **Graceful shutdown** — уведомление + kill CLI при перезапуске
+- [x] **Scheduler hooks** — ответы расписаний через processResponse (маскировка, md→html, медиа)
+- [x] **/clear sessionId** — полный сброс persistентной сессии
 - [ ] **Мониторинг** — YouTube, Twitter, GitHub, Telegram, RSS + storage backend
 
 ### Далее
