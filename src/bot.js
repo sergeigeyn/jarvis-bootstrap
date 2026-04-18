@@ -4,7 +4,7 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import { config } from './config.js';
 import { getSession, killSession, killAllSessions, getEngineInfo } from './engine.js';
 import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './media.js';
-import { processResponse, detectSensitiveInput } from './hooks.js';
+import { processResponse, detectSensitiveInput, checkCommand } from './hooks.js';
 import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
 import { startScheduler } from './scheduler.js';
 import {
@@ -76,11 +76,40 @@ function splitMessage(text, maxLen) {
     if (splitAt < maxLen * 0.3) splitAt = remaining.lastIndexOf(' ', maxLen);
     if (splitAt < maxLen * 0.3) splitAt = maxLen;
 
-    chunks.push(remaining.slice(0, splitAt));
+    let chunk = remaining.slice(0, splitAt);
     remaining = remaining.slice(splitAt).trimStart();
+
+    // Закрываем незакрытые HTML-теги в чанке
+    const { closed, carry } = closeOpenTags(chunk);
+    chunks.push(closed);
+    // Открываем теги в начале следующего чанка
+    if (carry) remaining = carry + remaining;
   }
 
   return chunks;
+}
+
+// Находит незакрытые HTML-теги и закрывает их в конце чанка,
+// возвращает opening-теги для начала следующего чанка
+function closeOpenTags(html) {
+  const TAG_RE = /<\/?(\w+)[^>]*>/g;
+  const stack = [];
+  let m;
+  while ((m = TAG_RE.exec(html)) !== null) {
+    const tag = m[1].toLowerCase();
+    if (m[0][1] === '/') {
+      // Closing tag — убираем из стека
+      const idx = stack.lastIndexOf(tag);
+      if (idx !== -1) stack.splice(idx, 1);
+    } else {
+      stack.push(tag);
+    }
+  }
+  if (stack.length === 0) return { closed: html, carry: '' };
+  // Закрываем в обратном порядке, открываем в прямом
+  const closers = stack.slice().reverse().map(t => `</${t}>`).join('');
+  const openers = stack.map(t => `<${t}>`).join('');
+  return { closed: html + closers, carry: openers };
 }
 
 // ── Обработка ответа (hooks → медиа-маркеры → текст) ──
@@ -203,6 +232,16 @@ async function handleMessage(ctx, promptText) {
     await ctx.reply(
       `Движок <b>${engineInfo.name}</b> не настроен — нет API-ключа.\n\n` +
       `Зайди в /settings → Модель и следуй инструкции.`,
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  // Проверка на деструктивные команды (hooks.js)
+  const cmdCheck = checkCommand(promptText);
+  if (cmdCheck.blocked) {
+    await ctx.reply(
+      `⛔ <b>Заблокировано:</b> ${cmdCheck.reason}\n\nЕсли это нужно — переформулируй запрос.`,
       { parse_mode: 'HTML' }
     );
     return;
@@ -508,6 +547,10 @@ bot.on('callback_query:data', async (ctx) => {
   }
 
   if (data.startsWith('projects:')) {
+    // killSession перед handleProjectsCallback — при switch проект сбросит сессию
+    if (data.startsWith('projects:switch:')) {
+      killSession(ctx.chat.id);
+    }
     await handleProjectsCallback(ctx, handleMessage);
     return;
   }
@@ -865,7 +908,10 @@ bot.on('message:sticker', async (ctx) => {
   if (!isAdmin(ctx)) return;
   const sticker = ctx.message.sticker;
   const emoji = sticker.emoji || '';
-  await handleMessage(ctx, `Пользователь отправил стикер ${emoji}. Отреагируй коротко.`);
+  addToBatch(ctx.chat.id, ctx, async () => ({
+    type: 'text',
+    prompt: `Пользователь отправил стикер ${emoji}. Отреагируй коротко.`,
+  }));
 });
 
 // ── Аудио (файлы, не голосовые) ──

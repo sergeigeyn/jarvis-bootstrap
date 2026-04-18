@@ -134,19 +134,29 @@ export function detectSensitiveInput(text) {
 // ── Markdown → HTML для Telegram ──
 
 function mdToHtml(text) {
-  let result = text;
+  // 1. Извлекаем code-блоки и inline-code ДО конвертации markdown
+  const codeBlocks = [];
+  let result = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
+    codeBlocks.push(`<pre>${code}</pre>`);
+    return `\x00CB${codeBlocks.length - 1}\x00`;
+  });
+  result = result.replace(/`([^`\n]+)`/g, (_, code) => {
+    codeBlocks.push(`<code>${code}</code>`);
+    return `\x00CB${codeBlocks.length - 1}\x00`;
+  });
+
+  // 2. Конвертируем markdown только в обычном тексте
   // **bold** → <b>bold</b>
   result = result.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   // *italic* → <i>italic</i> (но не внутри уже конвертированных тегов)
   result = result.replace(/(?<![<\w])(\*)(?!\*)(.+?)\1(?![>*])/g, '<i>$2</i>');
-  // `code` → <code>code</code>
-  result = result.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-  // ```block``` → <pre>block</pre>
-  result = result.replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre>$1</pre>');
   // ### heading → <b>heading</b>
   result = result.replace(/^#{1,3}\s+(.+)$/gm, '<b>$1</b>');
   // - list → • list
   result = result.replace(/^[\s]*[-*]\s+/gm, '• ');
+
+  // 3. Возвращаем code-блоки на место
+  result = result.replace(/\x00CB(\d+)\x00/g, (_, i) => codeBlocks[i]);
   return result;
 }
 

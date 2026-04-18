@@ -3,6 +3,7 @@ import { InlineKeyboard } from 'grammy';
 import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { config } from './config.js';
+import { setSessionId } from './state.js';
 
 const PROJECTS_PER_PAGE = 9;
 
@@ -202,6 +203,7 @@ export async function handleProjectsCallback(ctx, handleMessage) {
     }
 
     switchProject(projectName);
+    setSessionId(null);
     await ctx.answerCallbackQuery({ text: `Проект: ${projectName}` });
     try {
       await ctx.editMessageText(getProjectsText(), {
