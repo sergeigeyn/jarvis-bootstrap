@@ -251,14 +251,15 @@ async function handleMessage(ctx, promptText) {
 
   recordSession();
 
-  const typingInterval = setInterval(() => {
-    ctx.replyWithChatAction('typing').catch(() => {});
-  }, 4000);
-  await ctx.replyWithChatAction('typing').catch(() => {});
-
   // Прогресс-сообщение — показываем СРАЗУ, не ждём CLI
   let progressMsg = await ctx.reply('🤔 Мозгую...').catch(() => null);
   let lastProgressText = '🤔 Мозгую...';
+
+  // Typing ПОСЛЕ прогресс-сообщения (reply сбрасывает typing)
+  await ctx.replyWithChatAction('typing').catch(() => {});
+  const typingInterval = setInterval(() => {
+    ctx.replyWithChatAction('typing').catch(() => {});
+  }, 3000); // 3с — typing живёт ~5с, без гэпов
   session.send(promptText, {
     onProgress: async ({ event, label, elapsed }) => {
       let statusText;
@@ -280,6 +281,8 @@ async function handleMessage(ctx, promptText) {
         } else {
           progressMsg = await ctx.reply(statusText);
         }
+        // Обновляем typing после каждого edit (edit может сбросить индикатор)
+        await ctx.replyWithChatAction('typing').catch(() => {});
       } catch { /* Telegram rate limit — пропускаем */ }
     },
 
