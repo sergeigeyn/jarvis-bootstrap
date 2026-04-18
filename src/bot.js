@@ -4,7 +4,7 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import { config } from './config.js';
 import { getSession, killSession, killAllSessions, getEngineInfo } from './engine.js';
 import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './media.js';
-import { processResponse, detectSensitiveInput, checkCommand } from './hooks.js';
+import { processResponse, detectSensitiveInput } from './hooks.js';
 import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
 import { startScheduler } from './scheduler.js';
 import {
@@ -200,9 +200,10 @@ async function flushBatch(chatId) {
     prompts.push(item.prompt);
   }
 
-  // Транскрипции голосовых — одним сообщением
+  // Транскрипции голосовых — одним сообщением (эскейпим HTML-сущности)
   if (transcripts.length > 0) {
-    await ctx.reply(`🎤 <i>${transcripts.join('\n')}</i>`, { parse_mode: 'HTML' });
+    const escaped = transcripts.map(t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('\n');
+    await ctx.reply(`🎤 <i>${escaped}</i>`, { parse_mode: 'HTML' });
   }
 
   // Ошибки — дедуплицированно, один раз
@@ -232,16 +233,6 @@ async function handleMessage(ctx, promptText) {
     await ctx.reply(
       `Движок <b>${engineInfo.name}</b> не настроен — нет API-ключа.\n\n` +
       `Зайди в /settings → Модель и следуй инструкции.`,
-      { parse_mode: 'HTML' }
-    );
-    return;
-  }
-
-  // Проверка на деструктивные команды (hooks.js)
-  const cmdCheck = checkCommand(promptText);
-  if (cmdCheck.blocked) {
-    await ctx.reply(
-      `⛔ <b>Заблокировано:</b> ${cmdCheck.reason}\n\nЕсли это нужно — переформулируй запрос.`,
       { parse_mode: 'HTML' }
     );
     return;

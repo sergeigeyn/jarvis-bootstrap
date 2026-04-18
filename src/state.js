@@ -181,7 +181,19 @@ export function setDailyLimit(usd) {
 }
 
 export function isCostPaused() {
-  return loadState().costPaused === true;
+  const state = loadState();
+  if (!state.costPaused) return false;
+  // Авто-сброс паузы на новый день (расход обнулился)
+  if (state.dailySpendLimit > 0) {
+    const today = todayKey(state.timezone);
+    const spent = state.costHistory?.[today] ?? 0;
+    if (spent < state.dailySpendLimit) {
+      state.costPaused = false;
+      saveState(state);
+      return false;
+    }
+  }
+  return true;
 }
 
 export function unpauseCost() {

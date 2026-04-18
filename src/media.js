@@ -46,6 +46,12 @@ export async function downloadFile(bot, fileId, ext = '') {
     const mod = url.startsWith('https') ? https : http;
     const timeout = setTimeout(() => reject(new Error('File download timeout (30s)')), 30_000);
     mod.get(url, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        clearTimeout(timeout);
+        res.resume(); // drain response
+        reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+        return;
+      }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {

@@ -133,19 +133,35 @@ export function detectSensitiveInput(text) {
 
 // ── Markdown → HTML для Telegram ──
 
+function escapeHtmlEntities(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function mdToHtml(text) {
   // 1. Извлекаем code-блоки и inline-code ДО конвертации markdown
+  //    Содержимое code-блоков тоже эскейпим (< > & внутри <pre> ломают Telegram)
   const codeBlocks = [];
   let result = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
-    codeBlocks.push(`<pre>${code}</pre>`);
+    codeBlocks.push(`<pre>${escapeHtmlEntities(code)}</pre>`);
     return `\x00CB${codeBlocks.length - 1}\x00`;
   });
   result = result.replace(/`([^`\n]+)`/g, (_, code) => {
-    codeBlocks.push(`<code>${code}</code>`);
+    codeBlocks.push(`<code>${escapeHtmlEntities(code)}</code>`);
     return `\x00CB${codeBlocks.length - 1}\x00`;
   });
 
-  // 2. Конвертируем markdown только в обычном тексте
+  // 2. Эскейпим HTML-сущности в обычном тексте, но сохраняем валидные Telegram HTML-теги
+  const TELEGRAM_TAGS = 'b|i|u|s|code|pre|a|blockquote|tg-spoiler|tg-emoji';
+  const tagRe = new RegExp(`<(/?(${TELEGRAM_TAGS})(?:\\s[^>]*)?)>`, 'gi');
+  const savedTags = [];
+  result = result.replace(tagRe, (m) => {
+    savedTags.push(m);
+    return `\x00TG${savedTags.length - 1}\x00`;
+  });
+  result = escapeHtmlEntities(result);
+  result = result.replace(/\x00TG(\d+)\x00/g, (_, i) => savedTags[i]);
+
+  // 3. Конвертируем markdown → HTML-теги
   // **bold** → <b>bold</b>
   result = result.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   // *italic* → <i>italic</i> (но не внутри уже конвертированных тегов)
@@ -155,7 +171,7 @@ function mdToHtml(text) {
   // - list → • list
   result = result.replace(/^[\s]*[-*]\s+/gm, '• ');
 
-  // 3. Возвращаем code-блоки на место
+  // 4. Возвращаем code-блоки на место
   result = result.replace(/\x00CB(\d+)\x00/g, (_, i) => codeBlocks[i]);
   return result;
 }

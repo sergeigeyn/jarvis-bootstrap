@@ -4,6 +4,7 @@ import { config } from './config.js';
 import { getSession } from './engine.js';
 import { processResponse } from './hooks.js';
 import { parseMediaMarkers, sendMedia } from './media.js';
+import { getTimezone } from './state.js';
 
 let schedules = [];
 let timers = new Map();
@@ -23,11 +24,23 @@ export function saveSchedules() {
   writeFileSync(config.schedulesPath, JSON.stringify(schedules, null, 2));
 }
 
-function shouldRunNow(schedule) {
+function getNowInTz() {
+  const tz = getTimezone();
   const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  const weekday = now.getDay() || 7; // 1=Mon, 7=Sun
+  // Парсим компоненты через Intl для точного timezone
+  const parts = {};
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour: 'numeric', minute: 'numeric', weekday: 'short', hour12: false,
+  }).formatToParts(now).forEach(p => { parts[p.type] = p.value; });
+  const hour = parseInt(parts.hour, 10) % 24; // "24" → 0
+  const minute = parseInt(parts.minute, 10);
+  const dayMap = { Sun: 7, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const weekday = dayMap[parts.weekday] || (now.getDay() || 7);
+  return { now, hour, minute, weekday };
+}
+
+function shouldRunNow(schedule) {
+  const { now, hour, minute, weekday } = getNowInTz();
   
   if (!schedule.enabled) return false;
   
