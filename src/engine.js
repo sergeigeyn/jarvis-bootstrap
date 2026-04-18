@@ -1,5 +1,7 @@
 // Абстракция AI-движка: Claude Code, OpenAI Codex
 import { spawn } from 'child_process';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import { config } from './config.js';
 import { getOwnerName, getAgentName } from './onboarding.js';
 import {
@@ -7,6 +9,32 @@ import {
   detectAuthMode, recordCost, isCostPaused,
 } from './state.js';
 import { resolveProjectDir } from './projects.js';
+
+// ── Динамический список env-переменных для контекста агента ──
+
+const SYSTEM_ENV_KEYS = new Set([
+  'BOT_TOKEN', 'ENGINE', 'AGENT_NAME', 'ADMIN_ID', 'HOME', 'PATH', 'NODE_ENV',
+  'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'OPENAI_API_KEY',
+  'CLAUDE_MODEL', 'USER', 'SHELL', 'LANG', 'TERM',
+]);
+
+function getUserEnvKeys() {
+  const envPath = join(config.dataDir, '.env');
+  if (!existsSync(envPath)) return [];
+  try {
+    const lines = readFileSync(envPath, 'utf8').split('\n');
+    const keys = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      if (!SYSTEM_ENV_KEYS.has(key)) keys.push(key);
+    }
+    return keys;
+  } catch { return []; }
+}
 
 // ── Disallowed tools (блокировка опасных паттернов на уровне CLI) ──
 
@@ -186,7 +214,11 @@ class EngineSession {
     // Инъекция контекста
     const owner = getOwnerName();
     const agent = getAgentName();
-    const contextPrefix = `[Контекст: ты — ${agent}, владелец — ${owner}. Отвечай на русском, неформально, на ты.]\n\n`;
+    const envKeys = getUserEnvKeys();
+    const envLine = envKeys.length > 0
+      ? `\nДоступные переменные окружения (используй через $ИМЯ в shell): ${envKeys.join(', ')}.`
+      : '\nПеременных окружения пока нет. Пользователь может добавить через /settings → 🔑 Переменные.';
+    const contextPrefix = `[Контекст: ты — ${agent}, владелец — ${owner}. Отвечай на русском, неформально, на ты.${envLine}]\n\n`;
     const fullPrompt = contextPrefix + prompt;
 
     // Получаем persistентный sessionId
