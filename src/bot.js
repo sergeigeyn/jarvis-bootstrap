@@ -96,8 +96,9 @@ async function handleResponse(ctx, response, replyMarkup = null) {
 
 function buildActionKeyboard() {
   return new InlineKeyboard()
-    .text('▶ Далее', 'action:continue')
-    .text('⏹ Стоп', 'action:stop')
+    .text('✔ Продолжай', 'action:continue')
+    .text('✖ Стоп', 'action:stop')
+    .row()
     .text('💬 Комментарий', 'action:comment');
 }
 
@@ -243,13 +244,13 @@ async function handleMessage(ctx, promptText) {
         await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
       }
       if (response?.trim()) {
-        // Кнопки только для задач > 5с
-        const keyboard = meta.elapsed > 5 ? buildActionKeyboard() : null;
-        await handleResponse(ctx, response, keyboard);
-        // Футер: время и стоимость
+        await handleResponse(ctx, response);
+        // Футер: время и стоимость + кнопки (только > 5с)
         const costStr = meta.cost > 0 ? `$${meta.cost.toFixed(3)}` : '$0';
         const footer = `🕐 ${meta.elapsed || 0}s · ${costStr}`;
-        await ctx.reply(footer).catch(() => {});
+        const keyboard = meta.elapsed > 5 ? buildActionKeyboard() : null;
+        const footerOpts = keyboard ? { reply_markup: keyboard } : {};
+        await ctx.reply(footer, footerOpts).catch(() => {});
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
       }
