@@ -114,6 +114,8 @@ function parseStreamLine(line) {
       return {
         event: 'result',
         text: obj.result || '',
+        isError: obj.is_error || false,
+        errors: obj.errors || [],
         sessionId: obj.session_id || null,
         cost: obj.total_cost_usd || obj.cost_usd || 0,
       };
@@ -130,6 +132,8 @@ function parseStreamJson(raw) {
   let text = '';
   let totalCost = 0;
   let sessionId = null;
+  let isError = false;
+  let errors = [];
 
   for (const line of lines) {
     const parsed = parseStreamLine(line);
@@ -140,10 +144,11 @@ function parseStreamJson(raw) {
       if (parsed.text) text = parsed.text;
       if (parsed.sessionId) sessionId = parsed.sessionId;
       if (parsed.cost) totalCost = parsed.cost;
+      if (parsed.isError) { isError = true; errors = parsed.errors; }
     }
   }
 
-  return { text: text.trim(), cost: totalCost, sessionId };
+  return { text: text.trim(), cost: totalCost, sessionId, isError, errors };
 }
 
 // ── Сессии ──
@@ -159,7 +164,7 @@ class EngineSession {
     this.engine = ENGINES[config.engine];
   }
 
-  async send(prompt, { onDone, onError, onProgress, onCostWarning, onCostPaused }) {
+  async send(prompt, { onDone, onError, onProgress, onCostWarning, onCostPaused, _retried } = {}) {
     if (this.busy) {
       onError?.(new Error('Сессия занята, подожди...'));
       return;
@@ -232,14 +237,32 @@ class EngineSession {
       this.lastActivity = Date.now();
 
       if (code === 0 || stdout.length > 0) {
-        let responseText = stdout.trim();
+        let responseText = '';
         let cost = 0;
 
         // Парсим stream-json для Claude
         if (this.engine.streaming && stdout.includes('{')) {
           const parsed = parseStreamJson(stdout);
-          responseText = parsed.text || responseText;
+          responseText = parsed.text;
           cost = parsed.cost;
+
+          // Ошибка от CLI — не показываем raw JSON
+          if (parsed.isError) {
+            const errMsg = parsed.errors.join('; ') || 'Ошибка движка';
+            console.error(`[engine:${config.engine}] CLI error: ${errMsg}`);
+
+            // Сессия протухла — сбрасываем и ретраим один раз
+            if (errMsg.includes('No conversation found') && !_retried) {
+              setSessionId(null);
+              console.log(`[engine] stale session, retrying without --resume`);
+              this.send(prompt, { onDone, onError, onProgress, onCostWarning, onCostPaused, _retried: true });
+              return;
+            }
+
+            setSessionId(null);
+            onError?.(new Error(errMsg));
+            return;
+          }
 
           // Сохраняем sessionId
           if (parsed.sessionId) {
@@ -252,6 +275,9 @@ class EngineSession {
             if (paused) onCostPaused?.();
             else if (warning) onCostWarning?.(cost);
           }
+        } else {
+          // Не stream-json (Codex) — используем stdout как есть
+          responseText = stdout.trim();
         }
 
         onDone?.(responseText);
