@@ -265,6 +265,7 @@ class EngineSession {
     proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
 
     proc.on('close', (code) => {
+      clearTimeout(this._watchdog);
       this.busy = false;
       this.process = null;
       this.lastActivity = Date.now();
@@ -318,19 +319,41 @@ class EngineSession {
       } else {
         const errMsg = stderr.trim() || `${this.engine.name} exited with code ${code}`;
         console.error(`[engine:${config.engine}] error for chat ${this.chatId}: ${errMsg}`);
+
+        // Retry на транзиентные ошибки (сеть, таймаут, 500) — один раз
+        const isTransient = /ECONNRESET|ETIMEDOUT|ENOTFOUND|503|502|500|overloaded|rate.limit/i.test(errMsg);
+        if (isTransient && !_retried) {
+          console.log(`[engine] transient error, retrying in 3s...`);
+          setTimeout(() => {
+            this.send(prompt, { onDone, onError, onProgress, onCostWarning, onCostPaused, _retried: true });
+          }, 3000);
+          return;
+        }
+
         onError?.(new Error(errMsg));
       }
     });
 
     proc.on('error', (err) => {
+      clearTimeout(this._watchdog);
       this.busy = false;
       this.process = null;
       console.error(`[engine:${config.engine}] spawn error: ${err.message}`);
       onError?.(err);
     });
+
+    // Watchdog: если busy > 6 мин без завершения — kill + notify
+    this._watchdog = setTimeout(() => {
+      if (this.busy && this.process) {
+        console.error(`[engine] watchdog: session ${this.chatId} stuck for >6 min, killing`);
+        this.kill();
+        onError?.(new Error('Таймаут: агент не ответил за 6 минут. Попробуй /clear и повтори.'));
+      }
+    }, 6 * 60 * 1000);
   }
 
   kill() {
+    clearTimeout(this._watchdog);
     if (this.process) {
       this.process.kill('SIGTERM');
       setTimeout(() => {
@@ -350,6 +373,13 @@ export function getSession(chatId) {
 export function killSession(chatId) {
   const session = sessions.get(chatId);
   if (session) {
+    session.kill();
+    sessions.delete(chatId);
+  }
+}
+
+export function killAllSessions() {
+  for (const [chatId, session] of sessions) {
     session.kill();
     sessions.delete(chatId);
   }

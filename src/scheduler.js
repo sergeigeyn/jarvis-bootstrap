@@ -2,6 +2,8 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { config } from './config.js';
 import { getSession } from './engine.js';
+import { processResponse } from './hooks.js';
+import { parseMediaMarkers, sendMedia } from './media.js';
 
 let schedules = [];
 let timers = new Map();
@@ -67,20 +69,45 @@ export function startScheduler(bot) {
       schedule.lastRunAt = now.toISOString();
       saveSchedules();
       
-      // Выполняем через Claude Code
+      // Выполняем через Claude Code (пропускаем если пользователь уже работает)
       if (config.adminId) {
         const session = getSession(config.adminId);
+        if (session.busy) {
+          console.log(`[scheduler] skipping "${schedule.name}" — session busy`);
+          schedule.lastRunAt = null; // Даём повторить в следующую минуту
+          saveSchedules();
+          continue;
+        }
         session.send(schedule.prompt, {
           onDone: async (response) => {
             try {
-              await bot.api.sendMessage(config.adminId, response.slice(0, config.messageMaxLen), {
-                parse_mode: 'HTML',
-              });
+              // Прогоняем через hooks (маскировка секретов, md→html)
+              const safe = processResponse(response);
+              const { cleanText, markers } = parseMediaMarkers(safe);
+
+              // Отправляем медиа-маркеры
+              const chatCtx = { replyWithPhoto: (s, o) => bot.api.sendPhoto(config.adminId, s, o),
+                replyWithDocument: (s, o) => bot.api.sendDocument(config.adminId, s, o),
+                replyWithVideo: (s, o) => bot.api.sendVideo(config.adminId, s, o),
+                replyWithAudio: (s, o) => bot.api.sendAudio(config.adminId, s, o),
+                replyWithVoice: (s, o) => bot.api.sendVoice(config.adminId, s, o),
+                replyWithSticker: (s) => bot.api.sendSticker(config.adminId, s),
+                replyWithAnimation: (s, o) => bot.api.sendAnimation(config.adminId, s, o),
+              };
+              for (const marker of markers) {
+                await sendMedia(chatCtx, marker);
+              }
+
+              if (cleanText) {
+                await bot.api.sendMessage(config.adminId, cleanText.slice(0, config.messageMaxLen), {
+                  parse_mode: 'HTML',
+                });
+              }
             } catch (err) {
               console.error(`[scheduler] send error: ${err.message}`);
-              // Повтор без parse_mode если HTML невалидный
               try {
-                await bot.api.sendMessage(config.adminId, response.slice(0, config.messageMaxLen));
+                const plain = response.replace(/<[^>]+>/g, '');
+                await bot.api.sendMessage(config.adminId, plain.slice(0, config.messageMaxLen));
               } catch {}
             }
           },

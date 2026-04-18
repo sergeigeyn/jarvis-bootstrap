@@ -2,7 +2,7 @@
 import { Bot, InputFile, InlineKeyboard } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { config } from './config.js';
-import { getSession, killSession, getEngineInfo } from './engine.js';
+import { getSession, killSession, killAllSessions, getEngineInfo } from './engine.js';
 import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './media.js';
 import { processResponse, detectSensitiveInput } from './hooks.js';
 import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
@@ -821,6 +821,47 @@ bot.on('message:document', async (ctx) => {
   });
 });
 
+// ── Видео ──
+
+bot.on('message:video', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const video = ctx.message.video;
+  const caption = ctx.message.caption || '';
+
+  addToBatch(ctx.chat.id, ctx, async () => {
+    const ext = video.mime_type?.includes('mp4') ? '.mp4' : '.video';
+    const filepath = await downloadFile(bot, video.file_id, ext);
+    const prompt = `Пользователь отправил видео. Файл: ${filepath}` +
+      (caption ? `\nПодпись: ${caption}` : '');
+    return { type: 'video', prompt };
+  });
+});
+
+// ── Стикеры ──
+
+bot.on('message:sticker', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const sticker = ctx.message.sticker;
+  const emoji = sticker.emoji || '';
+  await handleMessage(ctx, `Пользователь отправил стикер ${emoji}. Отреагируй коротко.`);
+});
+
+// ── Аудио (файлы, не голосовые) ──
+
+bot.on('message:audio', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const audio = ctx.message.audio;
+  const caption = ctx.message.caption || '';
+
+  addToBatch(ctx.chat.id, ctx, async () => {
+    const ext = audio.file_name ? '.' + audio.file_name.split('.').pop() : '.audio';
+    const filepath = await downloadFile(bot, audio.file_id, ext);
+    const prompt = `Пользователь отправил аудиофайл. Файл: ${filepath}\nНазвание: ${audio.title || audio.file_name || 'unknown'}` +
+      (caption ? `\nПодпись: ${caption}` : '');
+    return { type: 'audio', prompt };
+  });
+});
+
 // ── Запуск ──
 
 console.log(`[bot] starting ${getAgentName()} (engine: ${engineInfo.name})...`);
@@ -865,8 +906,13 @@ bot.start({
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.on(sig, () => {
+  process.on(sig, async () => {
     console.log(`[bot] ${sig} received, shutting down...`);
+    // Уведомить пользователя и убить CLI-процессы
+    if (config.adminId) {
+      await bot.api.sendMessage(config.adminId, '🔄 Перезапускаюсь...').catch(() => {});
+    }
+    killAllSessions();
     bot.stop();
     process.exit(0);
   });
