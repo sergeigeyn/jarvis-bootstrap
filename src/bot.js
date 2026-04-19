@@ -293,10 +293,12 @@ async function handleMessage(ctx, promptText) {
         await ctx.api.deleteMessage(ctx.chat.id, progressMsg.message_id).catch(() => {});
       }
       if (response?.trim()) {
-        // Футер: время + стоимость (всегда, если есть)
+        // Футер: время + стоимость
         const elapsed = meta.elapsed || 0;
         let footerContent = `⏱ ${elapsed}s`;
-        if (meta.cost > 0) {
+        if (meta.authMode === 'subscription') {
+          footerContent += ` · $0`;
+        } else if (meta.cost > 0) {
           footerContent += ` · $${meta.cost.toFixed(3)}`;
         }
         const footer = `\n\n<blockquote>${footerContent}</blockquote>`;

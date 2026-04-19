@@ -319,8 +319,8 @@ class EngineSession {
             setSessionId(parsed.sessionId);
           }
 
-          // Записываем расход
-          if (cost > 0) {
+          // Записываем расход (только для API key — при подписке cost теоретический)
+          if (cost > 0 && authMode !== 'subscription') {
             const { paused, warning } = recordCost(cost);
             if (paused) onCostPaused?.();
             else if (warning) onCostWarning?.(cost);
