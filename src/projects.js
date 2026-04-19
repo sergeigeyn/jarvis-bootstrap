@@ -228,13 +228,17 @@ export async function handleProjectsCallback(ctx, handleMessage) {
 
     switchProject(projectName);
     setSessionId(null);
-    await ctx.answerCallbackQuery({ text: `Проект: ${projectName}` });
+    await ctx.answerCallbackQuery();
+    // Обновляем список проектов (галочка переместится)
     try {
       await ctx.editMessageText(getProjectsText(), {
         parse_mode: 'HTML',
         reply_markup: buildProjectsKeyboard(),
       });
     } catch { /* message not modified — ok */ }
+    // Явное подтверждение — как /project команда
+    const displayProjectName = projectName.replace('~/workspace/', '').replace('~/workspace', 'Workspace');
+    await ctx.reply(`Проект: <b>${displayProjectName}</b>. Сессия сброшена.`, { parse_mode: 'HTML' });
     return;
   }
 
