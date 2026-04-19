@@ -286,6 +286,7 @@ sudo systemctl restart jarvis-bot
 - [x] **numTurns** — парсинг количества turns из stream-json для условия кнопок
 - [x] **Цена всегда** — стоимость в футере независимо от authMode
 - [x] **projects:switch** — сброс сессии (killSession + setSessionId) при переключении проекта
+- [x] **projects:s:** — callback data по индексу (не имени) — фикс 64-byte лимита Telegram для кириллических имён
 - [ ] **Мониторинг** — YouTube, Twitter, GitHub, Telegram, RSS + storage backend
 
 ### Далее
