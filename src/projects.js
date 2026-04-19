@@ -136,10 +136,10 @@ export function buildProjectsKeyboard(page = 0) {
   // ~/workspace на всю ширину (только на первой странице)
   if (page === 0) {
     const wsIdx = projects.indexOf('~/workspace');
-    kb.text('📁 ~/workspace', `projects:s:${wsIdx}`).row();
+    kb.text('🏠 Workspace', `projects:s:${wsIdx}`).row();
   }
 
-  // Проекты по 3 в ряд
+  // Проекты по 2 в ряд (больше места для имён)
   const items = page === 0
     ? pageProjects.filter(p => p !== '~/workspace')
     : pageProjects;
@@ -148,13 +148,14 @@ export function buildProjectsKeyboard(page = 0) {
     const p = items[i];
     const idx = projects.indexOf(p);
     const isCurrent = currentProject === p;
-    const label = isCurrent ? `✓ ${truncate(p, 12)}` : truncate(p, 14);
+    const name = displayName(p);
+    const label = isCurrent ? `✓ ${truncate(name, 18)}` : truncate(name, 20);
     kb.text(label, `projects:s:${idx}`);
-    if ((i + 1) % 3 === 0) kb.row();
+    if ((i + 1) % 2 === 0) kb.row();
   }
 
-  // Завершаем ряд если не кратно 3
-  if (items.length % 3 !== 0) kb.row();
+  // Завершаем ряд если не кратно 2
+  if (items.length % 2 !== 0) kb.row();
 
   // Пагинация
   if (totalPages > 1) {
@@ -173,6 +174,13 @@ export function buildProjectsKeyboard(page = 0) {
 function truncate(str, maxLen) {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen - 1) + '…';
+}
+
+// Короткое имя для кнопки (без ~/workspace/ префикса)
+function displayName(projectPath) {
+  if (projectPath === '~/workspace') return '🏠 Workspace';
+  if (projectPath.startsWith('~/workspace/')) return projectPath.replace('~/workspace/', '');
+  return projectPath;
 }
 
 // ── Callback обработчик ──
