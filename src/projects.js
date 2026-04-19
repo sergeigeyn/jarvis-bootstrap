@@ -135,7 +135,8 @@ export function buildProjectsKeyboard(page = 0) {
 
   // ~/workspace на всю ширину (только на первой странице)
   if (page === 0) {
-    kb.text('📁 ~/workspace', 'projects:switch:~/workspace').row();
+    const wsIdx = projects.indexOf('~/workspace');
+    kb.text('📁 ~/workspace', `projects:s:${wsIdx}`).row();
   }
 
   // Проекты по 3 в ряд
@@ -145,9 +146,10 @@ export function buildProjectsKeyboard(page = 0) {
 
   for (let i = 0; i < items.length; i++) {
     const p = items[i];
+    const idx = projects.indexOf(p);
     const isCurrent = currentProject === p;
     const label = isCurrent ? `✓ ${truncate(p, 12)}` : truncate(p, 14);
-    kb.text(label, `projects:switch:${p}`);
+    kb.text(label, `projects:s:${idx}`);
     if ((i + 1) % 3 === 0) kb.row();
   }
 
@@ -193,8 +195,22 @@ export async function handleProjectsCallback(ctx, handleMessage) {
     return;
   }
 
-  if (data.startsWith('projects:switch:')) {
-    const projectName = data.replace('projects:switch:', '');
+  if (data.startsWith('projects:s:') || data.startsWith('projects:switch:')) {
+    let projectName;
+
+    if (data.startsWith('projects:s:')) {
+      // Новый формат: индекс
+      const idx = parseInt(data.replace('projects:s:', ''), 10);
+      const projects = getProjectsList();
+      projectName = projects[idx];
+      if (!projectName) {
+        await ctx.answerCallbackQuery({ text: 'Проект не найден. Обнови список.' });
+        return;
+      }
+    } else {
+      // Старый формат: полное имя (обратная совместимость с кешированными кнопками)
+      projectName = data.replace('projects:switch:', '');
+    }
 
     // Блокируем системные проекты (на случай кеша старой клавиатуры)
     if (SYSTEM_PROJECTS.has(projectName)) {

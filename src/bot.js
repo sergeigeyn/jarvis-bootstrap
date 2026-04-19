@@ -543,7 +543,7 @@ bot.on('callback_query:data', async (ctx) => {
 
   if (data.startsWith('projects:')) {
     // killSession перед handleProjectsCallback — при switch проект сбросит сессию
-    if (data.startsWith('projects:switch:')) {
+    if (data.startsWith('projects:switch:') || data.startsWith('projects:s:')) {
       killSession(ctx.chat.id);
     }
     await handleProjectsCallback(ctx, handleMessage);
