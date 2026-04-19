@@ -287,6 +287,7 @@ sudo systemctl restart jarvis-bot
 - [x] **Цена всегда** — стоимость в футере независимо от authMode
 - [x] **projects:switch** — сброс сессии (killSession + setSessionId) при переключении проекта
 - [x] **projects:s:** — callback data по индексу (не имени) — фикс 64-byte лимита Telegram для кириллических имён
+- [x] **Проекты UX** — читаемые имена на кнопках (без ~/workspace/ префикса), 2 в ряд, явное подтверждение переключения
 - [ ] **Мониторинг** — YouTube, Twitter, GitHub, Telegram, RSS + storage backend
 
 ### Далее
