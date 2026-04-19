@@ -287,12 +287,14 @@ class EngineSession {
       if (code === 0 || stdout.length > 0) {
         let responseText = '';
         let cost = 0;
+        let numTurns = 0;
 
         // Парсим stream-json для Claude
         if (this.engine.streaming && stdout.includes('{')) {
           const parsed = parseStreamJson(stdout);
           responseText = parsed.text;
           cost = parsed.cost;
+          numTurns = parsed.numTurns || 0;
 
           // Ошибка от CLI — не показываем raw JSON
           if (parsed.isError) {
@@ -329,7 +331,6 @@ class EngineSession {
         }
 
         const elapsed = Math.round((Date.now() - this.startedAt) / 100) / 10; // 1 знак после точки
-        const numTurns = parsed?.numTurns || 0;
         onDone?.(responseText, { cost, elapsed, authMode, numTurns });
       } else {
         const errMsg = stderr.trim() || `${this.engine.name} exited with code ${code}`;
