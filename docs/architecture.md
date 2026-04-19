@@ -181,7 +181,7 @@ Telegram бот (grammy + auto-retry): команды `/start`, `/project`, `/se
 
 Мгновенный прогресс: «🤔 Мозгую...» отправляется ДО запуска CLI (без задержки 2-3с). Далее одно обновляемое сообщение показывает текущее действие агента (Читаю файл, Редактирую...) + таймер. Удаляется после получения ответа.
 
-Футер: `<blockquote>⏱ 35s · $0.042</blockquote>` в составе последнего сообщения ответа. Стоимость показывается всегда когда доступна (независимо от authMode).
+Футер: `<blockquote>⏱ 35s · $0</blockquote>` в составе последнего сообщения ответа. При подписке (subscription) — всегда `$0` (фиксированная плата, теоретический cost из CLI не записывается). При API key — реальная стоимость из stream-json.
 
 splitMessage: разбивка по 4000 символов с `closeOpenTags()` — незакрытые HTML-теги (`<b>`, `<i>`, `<code>` и т.д.) корректно закрываются на границе чанка и переоткрываются в начале следующего.
 
@@ -198,9 +198,10 @@ Graceful shutdown: при SIGTERM/SIGINT — уведомление пользо
 ## Cost Tracking
 
 Расходы извлекаются из stream-json вывода CLI и накапливаются в state.json.
+**Только для API key** — при подписке (subscription) cost из CLI теоретический и не записывается.
 
 ```
-CLI stream-json → парсинг cost_usd → state.costHistory[date] += cost
+CLI stream-json → парсинг cost_usd → [subscription? skip] → state.costHistory[date] += cost
                                             │
                                     ┌───────┴────────┐
                                     │ dailySpendLimit │
