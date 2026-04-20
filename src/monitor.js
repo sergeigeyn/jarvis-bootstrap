@@ -1,6 +1,6 @@
 // Мониторинг источников: RSS, GitHub, YouTube + расширяемо
 // Все типы работают без API-ключей (через RSS/Atom фиды)
-// Саммари через LLM (OpenRouter/Haiku) если ключ доступен
+// Саммари через LLM (Anthropic→Haiku / OpenAI→GPT-4o-mini / OpenRouter→Haiku) если ключ доступен
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { InlineKeyboard } from 'grammy';
@@ -128,11 +128,12 @@ async function summarizeItems(items) {
   // Определяем доступный API по ключу движка пользователя
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   // OAuth-токены подписки не годятся для API-вызовов
   const isOAuthOnly = !anthropicKey && !!process.env.CLAUDE_CODE_OAUTH_TOKEN;
 
-  if (!anthropicKey && !openaiKey) return items;
-  if (isOAuthOnly && !openaiKey) return items;
+  if (!anthropicKey && !openaiKey && !openrouterKey) return items;
+  if (isOAuthOnly && !openaiKey && !openrouterKey) return items;
 
   const toSummarize = items.filter(i => i.description && i.description.length > 50);
   if (!toSummarize.length) return items;
@@ -175,6 +176,24 @@ async function summarizeItems(items) {
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 500,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return items;
+      const data = await res.json();
+      responseText = data.choices?.[0]?.message?.content || '';
+    } else if (openrouterKey) {
+      // OpenRouter → Haiku (пользователь добавил ключ сам)
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openrouterKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'anthropic/claude-haiku-4-5-20251001',
           messages: [{ role: 'user', content: prompt }],
           max_tokens: 500,
         }),
