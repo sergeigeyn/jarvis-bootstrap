@@ -123,44 +123,72 @@ function decodeEntities(str) {
 // ── Саммари через LLM ──
 
 async function summarizeItems(items) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey || !items.length) return items;
+  if (!items.length) return items;
 
-  // Саммарим только элементы с контентом (description)
+  // Определяем доступный API по ключу движка пользователя
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  // OAuth-токены подписки не годятся для API-вызовов
+  const isOAuthOnly = !anthropicKey && !!process.env.CLAUDE_CODE_OAUTH_TOKEN;
+
+  if (!anthropicKey && !openaiKey) return items;
+  if (isOAuthOnly && !openaiKey) return items;
+
   const toSummarize = items.filter(i => i.description && i.description.length > 50);
   if (!toSummarize.length) return items;
 
-  // Батчим — один запрос на все элементы (экономия)
   const content = toSummarize.map((item, i) =>
     `[${i + 1}] ${item.title}\n${item.description.slice(0, 300)}`
   ).join('\n\n');
 
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'anthropic/claude-haiku-4-5-20251001',
-        messages: [{
-          role: 'user',
-          content: `Кратко опиши каждый пункт (1-2 предложения на русском). Формат: [N] саммари\n\n${content}`,
-        }],
-        max_tokens: 500,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+  const prompt = `Кратко опиши каждый пункт (1-2 предложения на русском). Формат: [N] саммари\n\n${content}`;
 
-    if (!res.ok) return items;
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || '';
+  try {
+    let responseText = '';
+
+    if (anthropicKey) {
+      // Anthropic API → Haiku (дёшево)
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': anthropicKey,
+          'content-type': 'application/json',
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return items;
+      const data = await res.json();
+      responseText = data.content?.[0]?.text || '';
+    } else if (openaiKey) {
+      // OpenAI API → GPT-4o-mini (дёшево)
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 500,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return items;
+      const data = await res.json();
+      responseText = data.choices?.[0]?.message?.content || '';
+    }
 
     // Парсим ответ — [1] ..., [2] ...
     for (let i = 0; i < toSummarize.length; i++) {
       const re = new RegExp(`\\[${i + 1}\\]\\s*(.+?)(?=\\[\\d+\\]|$)`, 's');
-      const match = text.match(re);
+      const match = responseText.match(re);
       if (match) toSummarize[i].summary = match[1].trim().slice(0, 200);
     }
   } catch (err) {
