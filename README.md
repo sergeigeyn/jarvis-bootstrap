@@ -100,9 +100,9 @@ node src/bot.js
 | `/settings` | Настройки (inline-клавиатура) | Логика |
 | `/status` | Статус системы | Логика |
 | `/cost` | Расходы за день | Логика |
-| `/monitor` | Статус мониторинга | Prompt → engine |
+| `/monitor` | Мониторинг источников (inline UI) | Логика |
 | `/digest` | Дайджест контента | Prompt → engine |
-| `/sources` | Каналы и аккаунты | Prompt → engine |
+| `/sources` | Источники мониторинга (алиас /monitor) | Логика |
 | `/skills` | Навыки агента | Prompt → engine |
 | `/feedback` | Отзыв | Prompt → engine |
 | `/help` | Все команды | Логика |
@@ -125,7 +125,8 @@ jarvis-bootstrap/
 │   ├── media.js        # Медиа: Deepgram, маркеры [ФОТО:], [ФАЙЛ:]
 │   ├── hooks.js        # Код-гейты: блок команд, маскировка, детект секретов, md→html
 │   ├── trust.js        # Динамический trust level (0→1→2)
-│   └── scheduler.js    # Расписания (daily/weekly/once)
+│   ├── monitor.js      # Мониторинг: RSS, GitHub, YouTube + inline UI
+│   └── scheduler.js    # Расписания (daily/weekly/once) + monitor digest
 ├── templates/
 │   ├── workspace/      # SOUL.md, CLAUDE.md, MEMORY.md
 │   └── skills/         # 6 встроенных навыков
@@ -145,6 +146,8 @@ jarvis-bootstrap/
 ├── state.json        # Персистентный стейт (сессия, расходы, режим)
 ├── profile.json      # Профиль владельца (имя, настройки)
 ├── schedules.json    # Расписания
+├── monitor.json      # Конфиг мониторинга (источники, digestHour)
+├── monitor/seen.json # Дедупликация (seen items)
 ├── hooks.json        # Пользовательские хуки (опционально)
 ├── trust.json        # Счётчик сессий и trust level
 └── project.json      # Текущий проект
@@ -288,7 +291,7 @@ sudo systemctl restart jarvis-bot
 - [x] **projects:switch** — сброс сессии (killSession + setSessionId) при переключении проекта
 - [x] **projects:s:** — callback data по индексу (не имени) — фикс 64-byte лимита Telegram для кириллических имён
 - [x] **Проекты UX** — читаемые имена на кнопках (без ~/workspace/ префикса), 2 в ряд, явное подтверждение переключения
-- [ ] **Мониторинг** — YouTube, Twitter, GitHub, Telegram, RSS + storage backend
+- [x] **Мониторинг** — RSS/Atom, GitHub releases, YouTube: inline-UI, source management, scheduler digest (30 мин проверка, дайджест в digestHour)
 
 ### Далее
 - [ ] Changelog в боте (уведомления об обновлениях)
