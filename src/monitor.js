@@ -355,8 +355,12 @@ export async function handleMonitorCallback(ctx, handleMessage) {
     const keyCheck = checkSourceKey(type);
     if (!keyCheck.ok) {
       await ctx.answerCallbackQuery();
+      // YouTube без ключа — предлагаем RSS-альтернативу
+      const ytHint = type === 'youtube'
+        ? '\n\n💡 <b>Альтернатива:</b> добавь канал как RSS — вставь ссылку на канал (youtube.com/@handle или youtube.com/channel/UCxxx), ключ не нужен.'
+        : '';
       await ctx.editMessageText(
-        `⚠️ Для <b>${info.label}</b> нужен <code>${keyCheck.envKey}</code>.\n\nДобавь через /settings → 🔑 Переменные, потом возвращайся.`,
+        `⚠️ Для <b>${info.label}</b> нужен <code>${keyCheck.envKey}</code>.\n\nДобавь через /settings → 🔑 Переменные, потом возвращайся.${ytHint}`,
         { parse_mode: 'HTML', reply_markup: buildMonitorKeyboard() },
       ).catch(() => {});
       return;
@@ -367,7 +371,7 @@ export async function handleMonitorCallback(ctx, handleMessage) {
     await ctx.answerCallbackQuery();
 
     let prompt = '';
-    if (type === 'rss') prompt = 'Отправь URL RSS/Atom фида:';
+    if (type === 'rss') prompt = 'Отправь URL фида или ссылку на YouTube-канал:';
     else if (type === 'github') prompt = 'Отправь репозиторий в формате <code>owner/repo</code>:';
     else if (type === 'youtube') prompt = 'Отправь ID YouTube-канала (начинается с UC...):';
 
@@ -427,18 +431,75 @@ export async function handleMonitorCallback(ctx, handleMessage) {
   await ctx.answerCallbackQuery();
 }
 
+// ── YouTube URL → RSS ──
+
+function youtubeUrlToChannelId(url) {
+  try {
+    const u = new URL(url);
+    if (!u.hostname.includes('youtube.com') && !u.hostname.includes('youtu.be')) return null;
+
+    // youtube.com/channel/UCxxxx — прямой ID
+    const chanMatch = u.pathname.match(/\/channel\/(UC[a-zA-Z0-9_-]+)/);
+    if (chanMatch) return { channelId: chanMatch[1], handle: null };
+
+    // youtube.com/@handle — нужен резолв
+    const handleMatch = u.pathname.match(/\/@([a-zA-Z0-9_.-]+)/);
+    if (handleMatch) return { channelId: null, handle: handleMatch[1], resolveUrl: url };
+
+    return null;
+  } catch { return null; }
+}
+
+async function resolveYoutubeChannelId(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'follow' });
+    if (!res.ok) return null;
+    const html = await res.text();
+    // <meta itemprop="channelId" content="UCxxxx">
+    const match = html.match(/channelId["\s]*(?:content|:)["\s]*[":]?\s*(UC[a-zA-Z0-9_-]+)/);
+    return match?.[1] || null;
+  } catch { return null; }
+}
+
+function youtubeUrlToRss(url) {
+  const parsed = youtubeUrlToChannelId(url);
+  if (!parsed) return null;
+  if (parsed.channelId) {
+    return {
+      rssUrl: `https://www.youtube.com/feeds/videos.xml?channel_id=${parsed.channelId}`,
+      name: parsed.channelId,
+    };
+  }
+  // @handle — вернём промис-маркер, обработаем в handleMonitorInput
+  return { needsResolve: true, handle: parsed.handle, resolveUrl: parsed.resolveUrl };
+}
+
 // ── Обработка текстового ввода при добавлении источника ──
 
-export function handleMonitorInput(text) {
+export async function handleMonitorInput(text) {
   if (!pendingAdd) return null;
 
   const { type } = pendingAdd;
   let name, params;
 
   if (type === 'rss') {
-    const url = text.trim();
+    let url = text.trim();
     if (!url.startsWith('http')) return { error: 'URL должен начинаться с http:// или https://' };
-    name = new URL(url).hostname.replace('www.', '');
+
+    // YouTube-ссылки → автоконвертация в RSS-фид (без API-ключа)
+    const ytConvert = youtubeUrlToRss(url);
+    if (ytConvert && ytConvert.needsResolve) {
+      // @handle → резолвим channel_id со страницы канала
+      const channelId = await resolveYoutubeChannelId(ytConvert.resolveUrl);
+      if (!channelId) return { error: `Не удалось определить channel_id для @${ytConvert.handle}. Попробуй ссылку формата youtube.com/channel/UCxxxx` };
+      url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+      name = `YT: @${ytConvert.handle}`;
+    } else if (ytConvert) {
+      url = ytConvert.rssUrl;
+      name = `YT: ${ytConvert.name}`;
+    } else {
+      name = new URL(url).hostname.replace('www.', '');
+    }
     params = { url };
   } else if (type === 'github') {
     const repo = text.trim().replace('https://github.com/', '');
@@ -446,9 +507,20 @@ export function handleMonitorInput(text) {
     name = repo;
     params = { repo };
   } else if (type === 'youtube') {
-    const channelId = text.trim();
-    name = channelId;
-    params = { channelId };
+    // YouTube через API — но если пришла ссылка, конвертим в RSS
+    let input = text.trim();
+    if (input.startsWith('http') && input.includes('youtube.com')) {
+      const ytConvert = youtubeUrlToRss(input);
+      if (ytConvert && ytConvert.needsResolve) {
+        const channelId = await resolveYoutubeChannelId(ytConvert.resolveUrl);
+        if (!channelId) return { error: `Не удалось определить channel_id. Попробуй формат UCxxxx` };
+        input = channelId;
+      } else if (ytConvert) {
+        input = ytConvert.name;
+      }
+    }
+    name = input;
+    params = { channelId: input };
   } else {
     return { error: 'Неизвестный тип' };
   }

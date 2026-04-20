@@ -729,7 +729,7 @@ bot.on('message:text', async (ctx) => {
 
   // 3. Мониторинг — ожидание ввода URL/repo/channelId
   if (getPendingAdd()) {
-    const result = handleMonitorInput(text);
+    const result = await handleMonitorInput(text);
     if (result?.error) {
       await ctx.reply(result.error);
     } else if (result?.source) {
