@@ -495,8 +495,8 @@ async function resolveYoutubeChannelId(url) {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'follow' });
     if (!res.ok) return null;
     const html = await res.text();
-    // <meta itemprop="channelId" content="UCxxxx">
-    const match = html.match(/channelId["\s]*(?:content|:)["\s]*[":]?\s*(UC[a-zA-Z0-9_-]+)/);
+    // Ищем UC-идентификатор — надёжнее чем искать по ключу channelId
+    const match = html.match(/"(UC[a-zA-Z0-9_-]{20,})"/);
     return match?.[1] || null;
   } catch { return null; }
 }
