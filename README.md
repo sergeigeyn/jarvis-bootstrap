@@ -291,7 +291,7 @@ sudo systemctl restart jarvis-bot
 - [x] **projects:switch** — сброс сессии (killSession + setSessionId) при переключении проекта
 - [x] **projects:s:** — callback data по индексу (не имени) — фикс 64-byte лимита Telegram для кириллических имён
 - [x] **Проекты UX** — читаемые имена на кнопках (без ~/workspace/ префикса), 2 в ряд, явное подтверждение переключения
-- [x] **Мониторинг** — RSS/Atom, GitHub releases, YouTube: inline-UI, source management, scheduler digest (30 мин проверка, дайджест в digestHour)
+- [x] **Мониторинг** — RSS/Atom, GitHub, YouTube: все без API-ключей (публичные фиды), inline-UI, саммари через ключ движка (Haiku/GPT-4o-mini), автопроверка каждые 30 мин
 
 ### Далее
 - [ ] Changelog в боте (уведомления об обновлениях)

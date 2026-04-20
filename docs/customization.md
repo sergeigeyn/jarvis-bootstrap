@@ -162,22 +162,33 @@ TRUST_LEVEL=2  # Сразу максимальная автономия
 
 ## Мониторинг источников (monitor.js)
 
-Отслеживание RSS-фидов, GitHub-репозиториев и YouTube-каналов. Новые записи — в дайджест.
+Отслеживание RSS-фидов, GitHub-репозиториев и YouTube-каналов. Все типы работают без API-ключей — через публичные RSS/Atom фиды.
 
 ### Поддерживаемые типы
 
-| Тип | API-ключ | Что отслеживает |
-|---|---|---|
-| RSS/Atom | Не нужен | Статьи, блоги, ProductHunt, новости |
-| GitHub | `GITHUB_TOKEN` | Новые релизы (tag + release notes) |
-| YouTube | `YOUTUBE_API_KEY` | Новые видео на канале |
+| Тип | API-ключ | Что принимает | Что отслеживает |
+|---|---|---|---|
+| RSS/Atom | Не нужен | URL фида, ссылка на YouTube-канал | Статьи, блоги, видео, новости |
+| GitHub | Не нужен | `owner/repo` или ссылка | Новые релизы (через Atom feed) |
+| YouTube | Не нужен | Ссылка, @handle или UCxxxx | Новые видео (через RSS feed) |
+
+YouTube-ссылки автоконвертируются в RSS: `m.youtube.com`, `youtube.com/@handle`, `youtube.com/channel/UCxxxx` — всё принимается. @handle резолвится в channel_id автоматически.
+
+GitHub репозитории используют публичный `releases.atom` фид — токен не нужен для публичных репо.
+
+### Саммари
+
+Если у пользователя есть API-ключ движка (`ANTHROPIC_API_KEY` или `OPENAI_API_KEY`), новые записи автоматически получают краткое саммари (1-2 предложения) через дешёвую модель:
+- Claude → Haiku
+- Codex → GPT-4o-mini
+
+При подписке (OAuth-токен без API-ключа) — дайджест без саммари, только заголовки и ссылки.
 
 ### Настройка
 
 1. `/monitor` или `/start` → 📡 Мониторинг
 2. ➕ Добавить источник → выбери тип
-3. Если нужен API-ключ — добавь через `/settings → 🔑 Переменные`
-4. Отправь URL (RSS), `owner/repo` (GitHub) или ID канала (YouTube)
+3. Отправь ссылку, URL фида или `owner/repo`
 
 ### Конфигурация
 
@@ -188,8 +199,15 @@ TRUST_LEVEL=2  # Сразу максимальная автономия
     {
       "id": "rss_1234567890",
       "type": "rss",
-      "name": "hnrss.org",
-      "url": "https://hnrss.org/frontpage",
+      "name": "YT: @mkbhd",
+      "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJy...",
+      "enabled": true
+    },
+    {
+      "id": "github_1234567891",
+      "type": "github",
+      "name": "anthropics/claude-code",
+      "repo": "anthropics/claude-code",
       "enabled": true
     }
   ],
@@ -331,8 +349,7 @@ EOF
 | Переменная | Описание |
 |---|---|
 | DEEPGRAM_API_KEY | Транскрипция голосовых |
-| GITHUB_TOKEN | GitHub API (мониторинг + работа с репозиториями) |
-| YOUTUBE_API_KEY | YouTube Data API (мониторинг каналов) |
+| GITHUB_TOKEN | GitHub API (приватные репо, расширенные данные) |
 | SERPER_API_KEY | Веб-поиск |
 | TRUST_LEVEL | Ручной trust level: 0, 1, 2 |
 | ... | Любые кастомные переменные |
