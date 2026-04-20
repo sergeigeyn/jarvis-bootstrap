@@ -23,6 +23,11 @@ import {
 } from './settings.js';
 import { buildMainMenuKeyboard, getMainMenuText, getReturningMenuText } from './menu.js';
 import { buildProjectsKeyboard, getProjectsText, handleProjectsCallback, switchProject, getCurrentProject } from './projects.js';
+import {
+  loadMonitorConfig, getMonitorText, buildMonitorKeyboard,
+  handleMonitorCallback, handleMonitorInput, getPendingAdd, clearPendingAdd,
+  checkAllSources, formatDigest,
+} from './monitor.js';
 
 const bot = new Bot(config.botToken);
 const engineInfo = getEngineInfo(config.engine);
@@ -353,9 +358,7 @@ const PROMPT_COMMANDS = {
   connect:  { prompt: 'Настрой VS Code туннель для удалённого доступа к серверу. Используй code tunnel CLI.', description: 'VS Code туннель' },
   recovery: { prompt: 'Покажи SSH-доступ к серверу: IP, порт, пользователь. Проверь что SSH работает.', description: 'Аварийный доступ' },
   // cost — отдельная команда с реальными данными из state.js
-  monitor:  { prompt: 'Проверь статус мониторинга. Прочитай ~/.iia/monitor/config.json если есть, покажи что отслеживается.', description: 'Статус мониторинга' },
   digest:   { prompt: 'Сделай дайджест — что произошло за сегодня. Проверь daily notes, git log, задачи.', description: 'Дайджест контента' },
-  sources:  { prompt: 'Покажи настроенные каналы и аккаунты для мониторинга. Проверь конфиги в ~/.iia/monitor/.', description: 'Каналы и аккаунты' },
   skills:   { prompt: 'Покажи ТОЛЬКО пользовательские навыки из ~/workspace/.claude/skills/. Прочитай содержимое директории через Bash (ls). Если папка не существует или пуста — скажи что навыков пока нет и предложи установить. НЕ показывай встроенные навыки Claude Code CLI — это не пользовательские навыки.', description: 'Навыки агента' },
   feedback: { prompt: 'Пользователь хочет оставить отзыв или предложение. Спроси что именно, запиши в daily note.', description: 'Отзыв' },
 };
@@ -371,6 +374,22 @@ for (const [cmd, { prompt }] of Object.entries(PROMPT_COMMANDS)) {
 }
 
 // ── Команды (с собственной логикой) ──
+
+bot.command('monitor', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  await ctx.reply(getMonitorText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildMonitorKeyboard(),
+  });
+});
+
+bot.command('sources', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  await ctx.reply(getMonitorText(), {
+    parse_mode: 'HTML',
+    reply_markup: buildMonitorKeyboard(),
+  });
+});
 
 bot.command('project', async (ctx) => {
   if (!isAdmin(ctx)) return;
@@ -514,6 +533,7 @@ bot.command('help', async (ctx) => {
     `<b>Команды</b>\n\n` +
     `/start — Меню\n` +
     `/project — Проекты (переключение)\n` +
+    `/monitor — Мониторинг источников\n` +
     `/stop — Остановить задачу\n` +
     `/clear — Сбросить контекст\n` +
     `/settings — Настройки\n` +
@@ -547,6 +567,11 @@ bot.on('callback_query:data', async (ctx) => {
       killSession(ctx.chat.id);
     }
     await handleProjectsCallback(ctx, handleMessage);
+    return;
+  }
+
+  if (data.startsWith('mon:')) {
+    await handleMonitorCallback(ctx, handleMessage);
     return;
   }
 
@@ -623,7 +648,10 @@ async function handleMenuCallback(ctx) {
       break;
 
     case 'menu:monitoring':
-      await handleMessage(ctx, PROMPT_COMMANDS.monitor.prompt);
+      await ctx.reply(getMonitorText(), {
+        parse_mode: 'HTML',
+        reply_markup: buildMonitorKeyboard(),
+      });
       break;
 
     case 'menu:back':
@@ -699,7 +727,28 @@ bot.on('message:text', async (ctx) => {
     return;
   }
 
-  // 3. Автодетект секретов — не отправлять в движок!
+  // 3. Мониторинг — ожидание ввода URL/repo/channelId
+  if (getPendingAdd()) {
+    const result = handleMonitorInput(text);
+    if (result?.error) {
+      await ctx.reply(result.error);
+    } else if (result?.source) {
+      const s = result.source;
+      const typeLabel = { rss: 'RSS/Atom', github: 'GitHub', youtube: 'YouTube' }[s.type] || s.type;
+      const safeName = s.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      await ctx.reply(
+        `✅ <b>${safeName}</b> (${typeLabel}) добавлен.`,
+        { parse_mode: 'HTML' },
+      );
+      await ctx.reply(getMonitorText(), {
+        parse_mode: 'HTML',
+        reply_markup: buildMonitorKeyboard(),
+      });
+    }
+    return;
+  }
+
+  // 4. Автодетект секретов — не отправлять в движок!
   const detected = detectSensitiveInput(text);
 
   if (detected) {
@@ -746,7 +795,7 @@ bot.on('message:text', async (ctx) => {
     return;
   }
 
-  // 4. Обычное сообщение → батч (ждём 500мс, вдруг ещё что-то придёт)
+  // 5. Обычное сообщение → батч (ждём 500мс, вдруг ещё что-то придёт)
   addToBatch(chatId, ctx, async () => ({ type: 'text', prompt: text }));
 });
 
@@ -948,9 +997,9 @@ bot.start({
       { command: 'settings', description: 'Настройки' },
       { command: 'status', description: 'Статус системы' },
       { command: 'cost', description: 'Расходы за день' },
-      { command: 'monitor', description: 'Статус мониторинга' },
+      { command: 'monitor', description: 'Мониторинг источников' },
       { command: 'digest', description: 'Дайджест контента' },
-      { command: 'sources', description: 'Каналы и аккаунты' },
+      { command: 'sources', description: 'Источники мониторинга' },
       { command: 'skills', description: 'Навыки агента' },
       { command: 'feedback', description: 'Отзыв' },
       { command: 'help', description: 'Все команды' },

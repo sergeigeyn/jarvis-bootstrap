@@ -5,6 +5,7 @@ import { getSession } from './engine.js';
 import { processResponse } from './hooks.js';
 import { parseMediaMarkers, sendMedia } from './media.js';
 import { getTimezone } from './state.js';
+import { loadMonitorConfig, checkAllSources, formatDigest } from './monitor.js';
 
 let schedules = [];
 let timers = new Map();
@@ -141,4 +142,41 @@ export function startScheduler(bot) {
   }, 60_000);
   
   console.log(`[scheduler] started, ${schedules.length} schedule(s) loaded`);
+
+  // ── Мониторинг источников ──
+  // Проверяем каждые 30 мин. Дайджест отправляем в digestHour (из monitor.json)
+  let lastMonitorCheck = 0;
+  let lastDigestDate = '';
+
+  setInterval(async () => {
+    const monCfg = loadMonitorConfig();
+    if (!monCfg.enabled || !monCfg.sources?.length || !config.adminId) return;
+
+    const now = Date.now();
+    // Проверка раз в 30 минут
+    if (now - lastMonitorCheck < 30 * 60_000) return;
+    lastMonitorCheck = now;
+
+    try {
+      const items = await checkAllSources();
+      if (!items.length) return;
+
+      // Отправляем дайджест если настал digestHour ИЛИ накопилось 10+ новых
+      const { hour } = getNowInTz();
+      const today = new Date().toISOString().slice(0, 10);
+      const isDigestTime = hour === (monCfg.digestHour ?? 9) && lastDigestDate !== today;
+
+      if (isDigestTime || items.length >= 10) {
+        const digest = formatDigest(items);
+        if (digest) {
+          await bot.api.sendMessage(config.adminId, digest.slice(0, config.messageMaxLen), {
+            parse_mode: 'HTML',
+          }).catch(err => console.error(`[scheduler] monitor send: ${err.message}`));
+          if (isDigestTime) lastDigestDate = today;
+        }
+      }
+    } catch (err) {
+      console.error(`[scheduler] monitor error: ${err.message}`);
+    }
+  }, 60_000); // проверяем каждую минуту, но сам fetch — раз в 30 мин (через lastMonitorCheck)
 }
