@@ -68,7 +68,7 @@ Telegram-бот, который разворачивает jarvis-bootstrap на
 | hooks.js | 208 | Безопасность: блок деструктивных команд, маскировка секретов, md→html |
 | scheduler.js | 182 | Расписания (daily/weekly/once) + автопроверка мониторинга каждые 30 мин |
 | media.js | 180 | Голос (Deepgram), фото, документы, медиа-маркеры |
-| onboarding.js | 165 | Первый запуск: знакомство, профиль |
+| onboarding.js | 197 | Первый запуск: знакомство, профиль, версионирование шаблонов |
 | trust.js | 108 | Уровень доверия (0-2) по количеству сессий |
 | config.js | 64 | .env, определение движка и ключа |
 | menu.js | 29 | Главное меню (8 inline-кнопок) |
@@ -88,6 +88,10 @@ templates/
 ├── skills/ — 6 встроенных навыков (system, claude-api, feature-dev, frontend-design, mcp-builder, web-artifacts-builder)
 └── workspace/ — SOUL.md, CLAUDE.md, MEMORY.md (деплоятся в ~/workspace/)
 ```
+
+Шаблоны содержат плейсхолдеры `{{AGENT_NAME}}` и `{{OWNER_NAME}}`. При деплое и обновлении подставляются реальные имена из `profile.json`.
+
+**Версионирование:** `TEMPLATE_VERSION` в `onboarding.js`. При `git pull + restart` бот сверяет версию шаблонов — если изменилась, автоматически применяет новые SOUL.md и CLAUDE.md. MEMORY.md никогда не перезаписывается.
 
 ---
 
