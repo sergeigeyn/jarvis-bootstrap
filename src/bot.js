@@ -354,11 +354,11 @@ async function handleMessage(ctx, promptText) {
 const PROMPT_COMMANDS = {
   newtask:  { prompt: 'Начинаем новую задачу. Спроси что нужно сделать.', description: 'Новая задача' },
   undo:     { prompt: 'Отмени последнее изменение (git). Покажи что отменил.', description: 'Отменить правку' },
-  sessions: { prompt: 'Покажи информацию об активных сессиях и последней активности.', description: 'Сессии' },
-  connect:  { prompt: 'Настрой VS Code туннель для удалённого доступа к серверу. Используй code tunnel CLI.', description: 'VS Code туннель' },
-  recovery: { prompt: 'Покажи SSH-доступ к серверу: IP, порт, пользователь. Проверь что SSH работает.', description: 'Аварийный доступ' },
+  sessions: { prompt: 'Покажи информацию о текущей Claude Code сессии: sessionId, сколько сообщений обработано, текущий проект (cat ~/.jarvis/project.json), uptime процесса. Не выдумывай данные — бери из реальных источников.', description: 'Сессии' },
+  connect:  { prompt: 'Подними VS Code туннель к ЭТОМУ серверу, на котором ты работаешь. Запусти: code tunnel --name $(hostname)-agent --accept-server-license-terms. Туннель даст пользователю прямой доступ к твоему окружению — файлам, терминалу, workspace. После запуска объясни: 1) перейти на github.com/login/device и ввести код, 2) в VS Code открыть Remote Tunnels и найти туннель по имени. Важно: туннель — это подключение именно к тебе (агенту), к твоему серверу и файлам.', description: 'VS Code туннель' },
+  recovery: { prompt: 'Покажи данные для SSH-доступа к серверу. Выполни: hostname -I для IP, whoami для пользователя, grep Port /etc/ssh/sshd_config для порта (дефолт 22). Проверь что sshd запущен (systemctl is-active sshd). Не выдумывай IP — бери из hostname -I.', description: 'Аварийный доступ' },
   // cost — отдельная команда с реальными данными из state.js
-  digest:   { prompt: 'Сделай дайджест — что произошло за сегодня. Проверь daily notes, git log, задачи.', description: 'Дайджест контента' },
+  digest:   { prompt: 'Сделай дайджест за сегодня. Проверь по порядку: 1) daily notes ~/workspace/memory/ за сегодня, 2) git log --since=today --oneline по всем проектам в ~/projects/, 3) файлы задач. Если данных нет — так и скажи, не выдумывай.', description: 'Дайджест контента' },
   skills:   { prompt: 'Покажи ТОЛЬКО пользовательские навыки из ~/workspace/.claude/skills/. Прочитай содержимое директории через Bash (ls). Если папка не существует или пуста — скажи что навыков пока нет и предложи установить. НЕ показывай встроенные навыки Claude Code CLI — это не пользовательские навыки.', description: 'Навыки агента' },
   feedback: { prompt: 'Пользователь хочет оставить отзыв или предложение. Спроси что именно, запиши в daily note.', description: 'Отзыв' },
 };
