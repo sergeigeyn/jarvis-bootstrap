@@ -1,7 +1,14 @@
-// Онбординг — первое знакомство с владельцем
+// Онбординг — первое знакомство с владельцем + управление шаблонами
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { config } from './config.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMPLATES_DIR = join(__dirname, '..', 'templates', 'workspace');
+
+// Версия шаблонов — увеличивай при обновлении SOUL.md / CLAUDE.md в templates/
+const TEMPLATE_VERSION = 1;
 
 const PROFILE_PATH = join(config.dataDir, 'profile.json');
 
@@ -16,6 +23,7 @@ const defaultProfile = {
   agentName: config.agentName || 'Джарвис',
   onboarded: false,
   createdAt: null,
+  templateVersion: 0,
 };
 
 let profile = { ...defaultProfile };
@@ -62,21 +70,21 @@ export function getAgentName() {
 export function setOwnerName(name) {
   profile.ownerName = name;
   save();
-  updateTemplates();
+  applyTemplates();
 }
 
 export function setAgentName(name) {
   profile.agentName = name;
   config.agentName = name;
   save();
-  updateTemplates();
+  applyTemplates();
 }
 
 export function completeOnboarding() {
   profile.onboarded = true;
   profile.createdAt = new Date().toISOString();
   save();
-  updateTemplates();
+  applyTemplates();
 }
 
 export function resetOnboarding() {
@@ -85,30 +93,53 @@ export function resetOnboarding() {
   save();
 }
 
-// ── Обновление SOUL.md и MEMORY.md ──
+// ── Применение шаблонов (SOUL.md, CLAUDE.md) с подстановкой имён ──
 
-function updateTemplates() {
+function applyTemplates() {
   const owner = profile.ownerName || 'Владелец';
   const agent = profile.agentName || 'Джарвис';
 
-  // SOUL.md
-  const soulPath = join(config.workspaceDir, 'SOUL.md');
-  if (existsSync(soulPath)) {
-    let soul = readFileSync(soulPath, 'utf8');
-    // Заменяем имя агента
-    soul = soul.replace(/^Имя: .+$/m, `Имя: ${agent}`);
-    // Заменяем имя владельца (строка с производными имени)
-    soul = soul.replace(/^- .+ — любые производные имени ок$/m, `- ${owner} — любые производные имени ок`);
-    writeFileSync(soulPath, soul);
+  // Ensure workspace exists
+  if (!existsSync(config.workspaceDir)) {
+    mkdirSync(config.workspaceDir, { recursive: true });
   }
 
-  // MEMORY.md
-  const memPath = join(config.workspaceDir, 'MEMORY.md');
-  if (existsSync(memPath)) {
-    let mem = readFileSync(memPath, 'utf8');
-    mem = mem.replace(/^- Имя: .+$/m, `- Имя: ${owner}`);
-    writeFileSync(memPath, mem);
+  // Применяем шаблоны SOUL.md и CLAUDE.md из templates/workspace/
+  for (const file of ['SOUL.md', 'CLAUDE.md']) {
+    const templatePath = join(TEMPLATES_DIR, file);
+    if (!existsSync(templatePath)) continue;
+
+    let content = readFileSync(templatePath, 'utf8');
+    content = content.replace(/\{\{AGENT_NAME\}\}/g, agent);
+    content = content.replace(/\{\{OWNER_NAME\}\}/g, owner);
+
+    writeFileSync(join(config.workspaceDir, file), content);
   }
+
+  // MEMORY.md — только при первом создании, никогда не перезаписываем
+  const memPath = join(config.workspaceDir, 'MEMORY.md');
+  if (!existsSync(memPath)) {
+    const memTemplate = join(TEMPLATES_DIR, 'MEMORY.md');
+    if (existsSync(memTemplate)) {
+      let mem = readFileSync(memTemplate, 'utf8');
+      mem = mem.replace(/\{\{OWNER_NAME\}\}/g, owner);
+      writeFileSync(memPath, mem);
+    }
+  }
+
+  profile.templateVersion = TEMPLATE_VERSION;
+  save();
+}
+
+// ── Проверка обновления шаблонов (вызывается при старте бота) ──
+
+export function checkTemplateUpgrade() {
+  if (!profile.onboarded) return false;
+  if ((profile.templateVersion || 0) >= TEMPLATE_VERSION) return false;
+
+  console.log(`[onboarding] upgrading templates: v${profile.templateVersion || 0} → v${TEMPLATE_VERSION}`);
+  applyTemplates();
+  return true;
 }
 
 // ── Состояния онбординга ──

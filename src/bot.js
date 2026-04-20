@@ -14,7 +14,7 @@ import {
 import {
   isOnboarded, getOnboardingState, setOnboardingState, clearOnboardingState,
   getWelcomeMessage, getGreetingAfterName, getReturningMessage,
-  setOwnerName, completeOnboarding, getAgentName,
+  setOwnerName, completeOnboarding, getAgentName, checkTemplateUpgrade,
 } from './onboarding.js';
 import {
   buildSettingsKeyboard, getSettingsText, handleSettingsCallback,
@@ -977,6 +977,10 @@ bot.on('message:audio', async (ctx) => {
 // ── Запуск ──
 
 console.log(`[bot] starting ${getAgentName()} (engine: ${engineInfo.name})...`);
+
+// Авто-обновление шаблонов при изменении версии (после git pull)
+checkTemplateUpgrade();
+
 startScheduler(bot);
 
 bot.start({
