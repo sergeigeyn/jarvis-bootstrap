@@ -415,7 +415,7 @@ bot.command('project', async (ctx) => {
   switchProject(name);
   killSession(ctx.chat.id);
   setSessionId(null);
-  await ctx.reply(`Проект: <b>${name}</b>. Сессия сброшена.`, { parse_mode: 'HTML' });
+  await ctx.reply(`📍 Переключился на проект <b>${name}</b>`, { parse_mode: 'HTML' });
 });
 
 // /projects — алиас для /project (inline-меню)

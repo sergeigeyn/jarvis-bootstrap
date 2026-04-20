@@ -238,7 +238,7 @@ export async function handleProjectsCallback(ctx, handleMessage) {
     } catch { /* message not modified — ok */ }
     // Явное подтверждение — как /project команда
     const displayProjectName = projectName.replace('~/workspace/', '').replace('~/workspace', 'Workspace');
-    await ctx.reply(`Проект: <b>${displayProjectName}</b>. Сессия сброшена.`, { parse_mode: 'HTML' });
+    await ctx.reply(`📍 Переключился на проект <b>${displayProjectName}</b>`, { parse_mode: 'HTML' });
     return;
   }
 
