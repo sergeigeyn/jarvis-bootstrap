@@ -1,5 +1,6 @@
 // Мониторинг источников: RSS, GitHub, YouTube + расширяемо
-// Пользователь сам добавляет источники и ключи API
+// Все типы работают без API-ключей (через RSS/Atom фиды)
+// Саммари через LLM (OpenRouter/Haiku) если ключ доступен
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { InlineKeyboard } from 'grammy';
@@ -12,9 +13,9 @@ const SEEN_PATH = join(MONITOR_DIR, 'seen.json');
 // ── Типы источников и какие ключи им нужны ──
 
 const SOURCE_TYPES = {
-  rss:     { label: 'RSS/Atom', envKey: null, hint: 'URL фида (блоги, новости, ProductHunt)' },
-  github:  { label: 'GitHub', envKey: 'GITHUB_TOKEN', hint: 'Репозиторий (owner/repo) — releases, commits' },
-  youtube: { label: 'YouTube', envKey: 'YOUTUBE_API_KEY', hint: 'ID канала — новые видео' },
+  rss:     { label: 'RSS/Atom', envKey: null, hint: 'URL фида, ссылка на YouTube-канал' },
+  github:  { label: 'GitHub', envKey: null, hint: 'Репозиторий (owner/repo) — через Atom feed, без токена' },
+  youtube: { label: 'YouTube', envKey: null, hint: 'Ссылка или @handle — через RSS, без API-ключа' },
 };
 
 // ── Конфиг ──
@@ -84,8 +85,13 @@ async function fetchRSS(source) {
         || entry.match(/<link[^>]*>(.*?)<\/link>/i)?.[1] || '';
       const pubDate = entry.match(/<pubDate[^>]*>(.*?)<\/pubDate>|<published[^>]*>(.*?)<\/published>|<updated[^>]*>(.*?)<\/updated>/i);
       const date = pubDate?.[1] || pubDate?.[2] || pubDate?.[3] || '';
+      // Извлекаем описание (description / summary / media:description)
+      const descMatch = entry.match(/<(?:media:)?description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/(?:media:)?description>|<summary[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/i);
+      const rawDesc = descMatch?.[1] || descMatch?.[2] || '';
+      const description = decodeEntities(rawDesc.replace(/<[^>]+>/g, '')).trim().slice(0, 500);
+
       const id = link || title;
-      if (id) items.push({ id, title: decodeEntities(title), link, date, source: source.name });
+      if (id) items.push({ id, title: decodeEntities(title), link, date, description, source: source.name });
     }
   } catch (err) {
     console.error(`[monitor] RSS fetch error (${source.name}): ${err.message}`);
@@ -94,55 +100,17 @@ async function fetchRSS(source) {
 }
 
 async function fetchGitHub(source) {
-  const items = [];
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) return items;
-  try {
-    const headers = { Authorization: `Bearer ${token}`, 'User-Agent': 'jarvis-monitor' };
-    const res = await fetch(`https://api.github.com/repos/${source.repo}/releases?per_page=5`, {
-      headers, signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) return items;
-    const releases = await res.json();
-    for (const r of releases) {
-      items.push({
-        id: r.tag_name,
-        title: `${source.repo} ${r.tag_name}: ${r.name || ''}`.trim(),
-        link: r.html_url,
-        date: r.published_at,
-        source: source.name,
-      });
-    }
-  } catch (err) {
-    console.error(`[monitor] GitHub fetch error (${source.name}): ${err.message}`);
-  }
-  return items;
+  // Используем публичный Atom feed — без API-ключа
+  const url = `https://github.com/${source.repo}/releases.atom`;
+  return fetchRSS({ ...source, url });
 }
 
 async function fetchYouTube(source) {
-  const items = [];
-  const key = process.env.YOUTUBE_API_KEY;
-  if (!key) return items;
-  try {
-    const url = `https://www.googleapis.com/youtube/v3/search?channelId=${source.channelId}&order=date&part=snippet&type=video&maxResults=5&key=${key}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return items;
-    const data = await res.json();
-    for (const item of data.items || []) {
-      const videoId = item.id?.videoId;
-      if (!videoId) continue;
-      items.push({
-        id: videoId,
-        title: item.snippet?.title || '',
-        link: `https://youtube.com/watch?v=${videoId}`,
-        date: item.snippet?.publishedAt || '',
-        source: source.name,
-      });
-    }
-  } catch (err) {
-    console.error(`[monitor] YouTube fetch error (${source.name}): ${err.message}`);
-  }
-  return items;
+  // Используем публичный RSS — без API-ключа
+  const channelId = source.channelId;
+  if (!channelId) return [];
+  const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+  return fetchRSS({ ...source, url });
 }
 
 const FETCHERS = { rss: fetchRSS, github: fetchGitHub, youtube: fetchYouTube };
@@ -150,6 +118,56 @@ const FETCHERS = { rss: fetchRSS, github: fetchGitHub, youtube: fetchYouTube };
 function decodeEntities(str) {
   return str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+
+// ── Саммари через LLM ──
+
+async function summarizeItems(items) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey || !items.length) return items;
+
+  // Саммарим только элементы с контентом (description)
+  const toSummarize = items.filter(i => i.description && i.description.length > 50);
+  if (!toSummarize.length) return items;
+
+  // Батчим — один запрос на все элементы (экономия)
+  const content = toSummarize.map((item, i) =>
+    `[${i + 1}] ${item.title}\n${item.description.slice(0, 300)}`
+  ).join('\n\n');
+
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-haiku-4-5-20251001',
+        messages: [{
+          role: 'user',
+          content: `Кратко опиши каждый пункт (1-2 предложения на русском). Формат: [N] саммари\n\n${content}`,
+        }],
+        max_tokens: 500,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return items;
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '';
+
+    // Парсим ответ — [1] ..., [2] ...
+    for (let i = 0; i < toSummarize.length; i++) {
+      const re = new RegExp(`\\[${i + 1}\\]\\s*(.+?)(?=\\[\\d+\\]|$)`, 's');
+      const match = text.match(re);
+      if (match) toSummarize[i].summary = match[1].trim().slice(0, 200);
+    }
+  } catch (err) {
+    console.error(`[monitor] summarize error: ${err.message}`);
+  }
+
+  return items;
 }
 
 // ── Основной цикл: проверка всех источников ──
@@ -173,6 +191,12 @@ export async function checkAllSources() {
   }
 
   saveSeen();
+
+  // Саммари через LLM (если есть OPENROUTER_API_KEY)
+  if (newItems.length > 0) {
+    await summarizeItems(newItems);
+  }
+
   return newItems;
 }
 
@@ -210,6 +234,9 @@ export function formatDigest(items) {
         text += `  → <a href="${item.link}">${title}</a>\n`;
       } else {
         text += `  → ${title}\n`;
+      }
+      if (item.summary) {
+        text += `    <i>${escapeHtml(item.summary)}</i>\n`;
       }
     }
     if (sourceItems.length > 5) text += `  ... и ещё ${sourceItems.length - 5}\n`;
@@ -351,29 +378,14 @@ export async function handleMonitorCallback(ctx, handleMessage) {
     const info = SOURCE_TYPES[type];
     if (!info) { await ctx.answerCallbackQuery({ text: 'Неизвестный тип' }); return; }
 
-    // Проверяем ключ API
-    const keyCheck = checkSourceKey(type);
-    if (!keyCheck.ok) {
-      await ctx.answerCallbackQuery();
-      // YouTube без ключа — предлагаем RSS-альтернативу
-      const ytHint = type === 'youtube'
-        ? '\n\n💡 <b>Альтернатива:</b> добавь канал как RSS — вставь ссылку на канал (youtube.com/@handle или youtube.com/channel/UCxxx), ключ не нужен.'
-        : '';
-      await ctx.editMessageText(
-        `⚠️ Для <b>${info.label}</b> нужен <code>${keyCheck.envKey}</code>.\n\nДобавь через /settings → 🔑 Переменные, потом возвращайся.${ytHint}`,
-        { parse_mode: 'HTML', reply_markup: buildMonitorKeyboard() },
-      ).catch(() => {});
-      return;
-    }
-
     // Ожидаем ввод от пользователя
     pendingAdd = { type, info };
     await ctx.answerCallbackQuery();
 
     let prompt = '';
     if (type === 'rss') prompt = 'Отправь URL фида или ссылку на YouTube-канал:';
-    else if (type === 'github') prompt = 'Отправь репозиторий в формате <code>owner/repo</code>:';
-    else if (type === 'youtube') prompt = 'Отправь ID YouTube-канала (начинается с UC...):';
+    else if (type === 'github') prompt = 'Отправь репозиторий — ссылку или <code>owner/repo</code>:';
+    else if (type === 'youtube') prompt = 'Отправь ссылку на канал (youtube.com/@handle) или ID (UCxxxx):';
 
     await ctx.editMessageText(prompt, { parse_mode: 'HTML' }).catch(() => {});
     return;
@@ -507,19 +519,31 @@ export async function handleMonitorInput(text) {
     name = repo;
     params = { repo };
   } else if (type === 'youtube') {
-    // YouTube через API — но если пришла ссылка, конвертим в RSS
     let input = text.trim();
+    let resolvedName = input;
+
+    // Ссылка на канал → резолвим
     if (input.startsWith('http') && input.includes('youtube.com')) {
       const ytConvert = youtubeUrlToRss(input);
       if (ytConvert && ytConvert.needsResolve) {
         const channelId = await resolveYoutubeChannelId(ytConvert.resolveUrl);
         if (!channelId) return { error: `Не удалось определить channel_id. Попробуй формат UCxxxx` };
         input = channelId;
+        resolvedName = `@${ytConvert.handle}`;
       } else if (ytConvert) {
         input = ytConvert.name;
       }
     }
-    name = input;
+    // @handle без https → резолвим
+    else if (input.startsWith('@')) {
+      const handle = input.replace('@', '');
+      const channelId = await resolveYoutubeChannelId(`https://www.youtube.com/@${handle}`);
+      if (!channelId) return { error: `Не удалось найти канал ${input}. Попробуй ссылку или ID (UCxxxx)` };
+      resolvedName = input;
+      input = channelId;
+    }
+
+    name = resolvedName;
     params = { channelId: input };
   } else {
     return { error: 'Неизвестный тип' };
