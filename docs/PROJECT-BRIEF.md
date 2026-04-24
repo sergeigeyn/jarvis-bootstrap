@@ -28,7 +28,9 @@ Open-source Telegram AI-агент, который пользователь ст
 ### 2. helper-aishnik (installer bot)
 Telegram-бот, который разворачивает jarvis-bootstrap на VPS за 5-15 минут. Wizard: выбор движка → API-ключ → VPS-провайдер → токен → бот-токен → подтверждение → деплой. Работает через SSH. Поддерживает Aeza Cloud и Timeweb Cloud. E2E протестирован на AlmaLinux 9.5.
 
-**Статус:** код готов, E2E работает. НЕ запущен как сервис (запуск вручную). НЕ на GitHub (только локально). Нужно: выложить на GitHub, сделать systemd-сервис, добавить auto-update и fleet management.
+**UX:** экран приветствия → чеклист 5 шагов → инлайн-инструкции (Claude $100/мес или API-ключ, токены Aeza/Timeweb, BotFather) → wizard деплоя.
+
+**Статус:** код готов, E2E работает. Запускается вручную (`node src/bot.js`). НЕ на GitHub (только локально). Нужно: выложить на GitHub, сделать systemd-сервис, добавить auto-update и fleet management.
 
 ### 3. Dashboard (TODO — не начат)
 Веб-панель для управления всеми развёрнутыми агентами. Описание ниже.
