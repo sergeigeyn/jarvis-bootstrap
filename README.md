@@ -128,7 +128,7 @@ jarvis-bootstrap/
 │   ├── monitor.js      # Мониторинг: RSS, GitHub, YouTube + inline UI
 │   └── scheduler.js    # Расписания (daily/weekly/once) + monitor digest
 ├── templates/
-│   ├── workspace/      # SOUL.md, CLAUDE.md, MEMORY.md
+│   ├── workspace/      # SOUL.md, CLAUDE.md, SERVICES.md, MEMORY.md
 │   └── skills/         # 6 встроенных навыков
 ├── scripts/
 │   └── bootstrap.sh    # Автоустановка на VPS (мульти-дистрибутив)
@@ -155,6 +155,7 @@ jarvis-bootstrap/
 ~/workspace/
 ├── SOUL.md           # Личность (кто)
 ├── CLAUDE.md         # Правила (как)
+├── SERVICES.md       # Каталог сервисов (что подключить и зачем)
 ├── MEMORY.md         # Память (что знает)
 ├── memory/           # Дневники
 ├── knowledge/        # База знаний
@@ -196,7 +197,7 @@ jarvis-bootstrap/
 ## Документация
 
 - [Архитектура](docs/architecture.md) — слои, движки, потоки, безопасность, эволюция
-- [Кастомизация](docs/customization.md) — личность, правила, хуки, trust, навыки, расписания
+- [Кастомизация](docs/customization.md) — личность, правила, сервисы, хуки, trust, навыки, расписания
 - [Troubleshooting](docs/troubleshooting.md) — решение типичных проблем
 
 ## Управление
@@ -292,8 +293,9 @@ sudo systemctl restart jarvis-bot
 - [x] **projects:s:** — callback data по индексу (не имени) — фикс 64-byte лимита Telegram для кириллических имён
 - [x] **Проекты UX** — читаемые имена на кнопках (без ~/workspace/ префикса), 2 в ряд, явное подтверждение переключения
 - [x] **Мониторинг** — RSS/Atom, GitHub, YouTube: все без API-ключей (публичные фиды), inline-UI, саммари через ключ движка (Haiku/GPT-4o-mini/OpenRouter), автопроверка каждые 30 мин
-- [x] **Версионирование шаблонов** — SOUL.md и CLAUDE.md обновляются автоматически при `git pull + restart`, память не затрагивается
+- [x] **Версионирование шаблонов v2** — SOUL.md, CLAUDE.md и SERVICES.md обновляются автоматически при `git pull + restart`, память не затрагивается
 - [x] **Полные промпты** — конституция P0-P4, drift detector, самоконтроль, планирование, запрещённые паттерны
+- [x] **SERVICES.md** — каталог сервисов в шаблонах (Deepgram, Voyage, GitHub, Railway, Vercel, Supabase, OpenRouter, Gemini + паттерны auth)
 
 ### Далее
 - [ ] Changelog в боте (уведомления об обновлениях)

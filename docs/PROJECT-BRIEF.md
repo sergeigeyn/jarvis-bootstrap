@@ -59,16 +59,16 @@ Telegram-бот, который разворачивает jarvis-bootstrap на
 
 | Файл | Строк | Роль |
 |------|-------|------|
-| bot.js | 1030 | Telegram бот: команды, callback routing (menu/settings/projects/mon/action), батчинг сообщений (500мс), прогресс-статусы, очередь |
+| bot.js | 1034 | Telegram бот: команды, callback routing (menu/settings/projects/mon/action), батчинг сообщений (500мс), прогресс-статусы, очередь |
 | settings.js | 1007 | Настройки: статус-карта, модель, env-менеджер, inline-кнопки |
-| monitor.js | 588 | Мониторинг: RSS/GitHub/YouTube (все без API-ключей), inline UI, саммари через Haiku/GPT-4o-mini |
+| monitor.js | 607 | Мониторинг: RSS/GitHub/YouTube (все без API-ключей), inline UI, саммари через Haiku/GPT-4o-mini |
 | engine.js | 414 | Абстракция CLI: Claude/Codex, stream-json парсинг, прогресс, retry, watchdog |
 | projects.js | 252 | Проекты: список, пагинация, переключение, callback data по индексу |
 | state.js | 227 | Персистентный стейт: сессии, расходы, режим, authMode |
 | hooks.js | 208 | Безопасность: блок деструктивных команд, маскировка секретов, md→html |
 | scheduler.js | 182 | Расписания (daily/weekly/once) + автопроверка мониторинга каждые 30 мин |
 | media.js | 180 | Голос (Deepgram), фото, документы, медиа-маркеры |
-| onboarding.js | 197 | Первый запуск: знакомство, профиль, версионирование шаблонов |
+| onboarding.js | 196 | Первый запуск: знакомство, профиль, версионирование шаблонов |
 | trust.js | 108 | Уровень доверия (0-2) по количеству сессий |
 | config.js | 64 | .env, определение движка и ключа |
 | menu.js | 29 | Главное меню (8 inline-кнопок) |
@@ -78,7 +78,7 @@ Telegram-бот, который разворачивает jarvis-bootstrap на
 | Файл | Содержание |
 |------|------------|
 | architecture.md | Слои, потоки данных, безопасность, фазы эволюции |
-| customization.md | SOUL, CLAUDE, hooks, мониторинг, навыки, расписания, env-переменные |
+| customization.md | SOUL, CLAUDE, SERVICES, hooks, мониторинг, навыки, расписания, env-переменные |
 | troubleshooting.md | Диагностика, проверка модулей, типичные проблемы |
 
 ### Шаблоны (templates/)
@@ -86,12 +86,12 @@ Telegram-бот, который разворачивает jarvis-bootstrap на
 ```
 templates/
 ├── skills/ — 6 встроенных навыков (system, claude-api, feature-dev, frontend-design, mcp-builder, web-artifacts-builder)
-└── workspace/ — SOUL.md, CLAUDE.md, MEMORY.md (деплоятся в ~/workspace/)
+└── workspace/ — SOUL.md, CLAUDE.md, CLAUDE.md, SERVICES.md, MEMORY.md (деплоятся в ~/workspace/)
 ```
 
 Шаблоны содержат плейсхолдеры `{{AGENT_NAME}}` и `{{OWNER_NAME}}`. При деплое и обновлении подставляются реальные имена из `profile.json`.
 
-**Версионирование:** `TEMPLATE_VERSION` в `onboarding.js`. При `git pull + restart` бот сверяет версию шаблонов — если изменилась, автоматически применяет новые SOUL.md и CLAUDE.md. MEMORY.md никогда не перезаписывается.
+**Версионирование:** `TEMPLATE_VERSION = 2` в `onboarding.js`. При `git pull + restart` бот сверяет версию шаблонов — если изменилась, автоматически применяет новые SOUL.md, CLAUDE.md и SERVICES.md. MEMORY.md никогда не перезаписывается.
 
 ---
 
@@ -123,6 +123,8 @@ templates/
 - Scheduler: timezone-aware, hooks integration
 - Мониторинг: RSS/GitHub/YouTube (все через публичные фиды, без API-ключей)
 - Саммари: Haiku (Anthropic API), GPT-4o-mini (OpenAI API) или Haiku через OpenRouter — через ключ пользователя
+- SERVICES.md — каталог сервисов в шаблонах (Deepgram, Voyage, GitHub, Railway, Vercel, Supabase, OpenRouter, Gemini)
+- Версионирование шаблонов v2: SOUL.md + CLAUDE.md + SERVICES.md автообновляются при git pull + restart
 
 ---
 
@@ -215,6 +217,7 @@ Dashboard (web)  ←→  API  ←→  Агенты на VPS
 ~/workspace/          # Идентичность и знания
 ├── SOUL.md           # Личность
 ├── CLAUDE.md         # Правила
+├── SERVICES.md       # Каталог сервисов и API-ключей
 ├── MEMORY.md         # Память
 ├── memory/           # Дневник
 ├── knowledge/        # База знаний
@@ -278,7 +281,7 @@ Dashboard (web)  ←→  API  ←→  Агенты на VPS
 
 ## Git
 
-- 101 коммит на main
+- 108 коммитов на main
 - Формат коммитов: `[agent] action: описание`
 - Нет открытых веток кроме main
 - CI/CD нет — деплой через SSH (git pull + systemctl restart)
