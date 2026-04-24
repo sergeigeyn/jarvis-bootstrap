@@ -7,8 +7,8 @@ import { config } from './config.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, '..', 'templates', 'workspace');
 
-// Версия шаблонов — увеличивай при обновлении SOUL.md / CLAUDE.md в templates/
-const TEMPLATE_VERSION = 1;
+// Версия шаблонов — увеличивай при обновлении SOUL.md / CLAUDE.md / SERVICES.md в templates/
+const TEMPLATE_VERSION = 2;
 
 const PROFILE_PATH = join(config.dataDir, 'profile.json');
 
@@ -104,8 +104,8 @@ function applyTemplates() {
     mkdirSync(config.workspaceDir, { recursive: true });
   }
 
-  // Применяем шаблоны SOUL.md и CLAUDE.md из templates/workspace/
-  for (const file of ['SOUL.md', 'CLAUDE.md']) {
+  // Применяем шаблоны SOUL.md, CLAUDE.md, SERVICES.md из templates/workspace/
+  for (const file of ['SOUL.md', 'CLAUDE.md', 'SERVICES.md']) {
     const templatePath = join(TEMPLATES_DIR, file);
     if (!existsSync(templatePath)) continue;
 
