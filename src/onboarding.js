@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, '..', 'templates', 'workspace');
 
 // Версия шаблонов — увеличивай при обновлении SOUL.md / CLAUDE.md / SERVICES.md в templates/
-const TEMPLATE_VERSION = 3;
+const TEMPLATE_VERSION = 4;
 
 const PROFILE_PATH = join(config.dataDir, 'profile.json');
 
