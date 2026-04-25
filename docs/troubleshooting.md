@@ -138,10 +138,43 @@ ls -la /path/to/file
 # Остальное: до 50MB
 ```
 
+### "invalid file HTTP URL specified: Wrong port number"
+Ошибка в логах `journalctl -u jarvis-bot`: путь к локальному файлу передаётся как URL.
+
+Причина: использован Telegraf-синтаксис `{ source: path }` вместо grammY-синтаксиса.
+Бот написан на **grammY**, не Telegraf — эти библиотеки несовместимы по API отправки файлов.
+
+Правильно (grammY):
+```javascript
+import { createReadStream } from 'fs';
+import { InputFile } from 'grammy';
+const source = new InputFile(createReadStream('/path/to/file.jpg'));
+await ctx.replyWithPhoto(source);
+```
+
+Неправильно (Telegraf-синтаксис, не работает в grammY):
+```javascript
+await ctx.replyWithPhoto({ source: '/path/to/file.jpg' }); // ❌
+```
+
 ### Маркеры [ФОТО:] отображаются как текст
 Claude вернул маркер, но парсер не распознал. Проверь формат:
 - Правильно: `[ФОТО: /tmp/image.jpg]`
 - Неправильно: `[ФОТО:/tmp/image.jpg]` (нет пробела после двоеточия)
+
+### Агент описывает файлы словами вместо отправки
+Агент понял что нужно отправить медиа, но не использует маркер. Или говорит «нужен токен».
+
+Причина: CLAUDE.md не объясняет механику достаточно чётко, или агент «убедил себя» в текущей сессии что маркер не работает.
+
+Решение:
+1. Попроси агента начать новую сессию — CLAUDE.md перечитается при старте
+2. Если повторяется — проверь версию шаблона:
+```bash
+cat ~/.jarvis/profile.json | python3 -c "import sys,json; d=json.load(sys.stdin); print('templateVersion:', d.get('templateVersion'))"
+# Должно быть 4 или выше
+```
+3. Если версия старая — `git pull && systemctl restart jarvis-bot` применит новый CLAUDE.md автоматически
 
 ## Расписания не срабатывают
 
