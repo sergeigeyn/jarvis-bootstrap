@@ -1,9 +1,10 @@
 // Обработка медиа: входящее (голос, фото, файлы) и исходящее (маркеры)
-import { writeFileSync, mkdirSync, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readdirSync, statSync, unlinkSync, createReadStream } from 'fs';
 import { join } from 'path';
 import { config } from './config.js';
 import https from 'https';
 import http from 'http';
+import { InputFile } from 'grammy';
 
 const MEDIA_DIR = join(config.workspaceDir, '.media');
 if (!existsSync(MEDIA_DIR)) mkdirSync(MEDIA_DIR, { recursive: true });
@@ -161,7 +162,7 @@ export function parseMediaMarkers(text) {
 
 export async function sendMedia(ctx, marker) {
   const { type, path, caption } = marker;
-  const source = path.startsWith('http') ? path : { source: path };
+  const source = path.startsWith('http') ? path : new InputFile(createReadStream(path));
   const opts = caption ? { caption } : {};
   
   try {
