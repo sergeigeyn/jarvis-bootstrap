@@ -146,6 +146,18 @@ function buildActionKeyboard() {
     .text('💬 Комментарий', 'action:comment');
 }
 
+// Кнопки подтверждения — когда агент спрашивает «Делаем? ✔ или ✖»
+function buildConfirmKeyboard() {
+  return new InlineKeyboard()
+    .text('✔', 'action:confirm_yes')
+    .text('✖', 'action:confirm_no');
+}
+
+// Детект паттерна подтверждения в ответе агента
+function hasConfirmPrompt(text) {
+  return /[✔✖].*[✔✖]/.test(text) && /делаем|запускаем|продолжаем|создаём|создаем|удаляем|применяем|отправляем/i.test(text);
+}
+
 // ── Очередь сообщений ──
 
 const messageQueue = new Map(); // chatId → [{ ctx, promptText, addedAt }]
@@ -308,10 +320,12 @@ async function handleMessage(ctx, promptText) {
           footerContent += ` · $${meta.cost.toFixed(3)}`;
         }
         const footer = `\n\n<blockquote>${footerContent}</blockquote>`;
-        // Кнопки только если агент упёрся в лимит turns (задача не завершена)
+        // Кнопки: лимит turns — продолжай/стоп; паттерн «✔ или ✖» — подтверждение
         const maxTurns = 25;
         const hitTurnLimit = (meta.numTurns || 0) >= maxTurns - 5; // 20+ из 25
-        const keyboard = hitTurnLimit ? buildActionKeyboard() : null;
+        const keyboard = hitTurnLimit ? buildActionKeyboard()
+          : hasConfirmPrompt(response) ? buildConfirmKeyboard()
+          : null;
         await handleResponse(ctx, response + footer, keyboard);
       } else {
         await ctx.reply('Движок вернул пустой ответ. Попробуй переформулировать или /clear для новой сессии.');
@@ -593,6 +607,10 @@ bot.on('callback_query:data', async (ctx) => {
       }
     } else if (data === 'action:comment') {
       // Следующее сообщение пойдёт с контекстом сессии
+    } else if (data === 'action:confirm_yes') {
+      await handleMessage(ctx, '✔');
+    } else if (data === 'action:confirm_no') {
+      await handleMessage(ctx, '✖');
     }
     return;
   }
