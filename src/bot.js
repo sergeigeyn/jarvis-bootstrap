@@ -7,6 +7,7 @@ import { downloadFile, transcribeVoice, parseMediaMarkers, sendMedia } from './m
 import { processResponse, detectSensitiveInput } from './hooks.js';
 import { getTrustLevel, getTrustName, getTrustState, recordSession } from './trust.js';
 import { startScheduler } from './scheduler.js';
+import { startHealthServer } from './health.js';
 import {
   getTodayCost, getCostHistory, getDailyLimit, getPermissionMode,
   getTimezone, isCostPaused, unpauseCost, setSessionId,
@@ -982,6 +983,7 @@ console.log(`[bot] starting ${getAgentName()} (engine: ${engineInfo.name})...`);
 checkTemplateUpgrade();
 
 startScheduler(bot);
+startHealthServer();
 
 bot.start({
   onStart: async () => {
