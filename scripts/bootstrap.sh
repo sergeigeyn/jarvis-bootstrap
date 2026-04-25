@@ -294,6 +294,14 @@ systemctl daemon-reload
 systemctl enable jarvis-bot
 systemctl start jarvis-bot
 
+# Открываем порт 3000 для Dashboard /health endpoint
+if command -v firewall-cmd &>/dev/null; then
+  firewall-cmd --permanent --add-port=3000/tcp 2>/dev/null || true
+  firewall-cmd --reload 2>/dev/null || true
+elif command -v ufw &>/dev/null; then
+  ufw allow 3000/tcp 2>/dev/null || true
+fi
+
 # ─── 14. Проверка ───
 
 sleep 5
