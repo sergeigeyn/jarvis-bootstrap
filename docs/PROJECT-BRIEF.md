@@ -30,7 +30,7 @@ Telegram-бот, который разворачивает jarvis-bootstrap на
 
 **UX:** экран приветствия → чеклист 5 шагов → инлайн-инструкции (Claude $100/мес или API-ключ, токены Aeza/Timeweb, BotFather) → wizard деплоя.
 
-**Статус:** код готов, E2E работает. Запускается вручную (`node src/bot.js`). НЕ на GitHub (только локально). Нужно: выложить на GitHub, сделать systemd-сервис, добавить auto-update и fleet management.
+**Статус:** полностью готов. На GitHub: github.com/sergeigeyn/helper-aishnik. Запускается вручную (`node src/bot.js`) на 188.166.90.33 — нужно установить как systemd (`sudo bash scripts/install-service.sh`). Bootstrap-скрипт для деплоя на новый сервер: `scripts/bootstrap.sh` (одна команда curl).
 
 ### 3. Dashboard (в разработке)
 Веб-панель для управления всеми развёрнутыми агентами. Запускается на том же сервере что и helper-aishnik (188.166.90.33, DigitalOcean Amsterdam). Доступна по `http://188.166.90.33:4000`.
@@ -93,7 +93,7 @@ templates/
 
 Шаблоны содержат плейсхолдеры `{{AGENT_NAME}}` и `{{OWNER_NAME}}`. При деплое и обновлении подставляются реальные имена из `profile.json`.
 
-**Версионирование:** `TEMPLATE_VERSION = 2` в `onboarding.js`. При `git pull + restart` бот сверяет версию шаблонов — если изменилась, автоматически применяет новые SOUL.md, CLAUDE.md и SERVICES.md. MEMORY.md никогда не перезаписывается.
+**Версионирование:** `TEMPLATE_VERSION = 4` в `onboarding.js`. При `git pull + restart` бот сверяет версию шаблонов — если изменилась, автоматически применяет новые SOUL.md, CLAUDE.md и SERVICES.md. MEMORY.md никогда не перезаписывается.
 
 ---
 
@@ -106,12 +106,14 @@ templates/
 - Мгновенный прогресс (до запуска CLI): «Мозгую...», «Читаю файл», «Редактирую»
 - Очередь сообщений при busy
 - Инлайн-кнопки (Продолжай/Стоп/Комментарий) при лимите turns
+- Инлайн-кнопки (✔/✖) при паттерне подтверждения в ответе агента («Делаем? ✔ или ✖»)
 - Код-гейты безопасности (hooks.js) — 16/16 протестировано
 - Динамический trust level — 16/16 протестировано
 - Онбординг, главное меню, настройки
 - Проекты: список, пагинация, переключение
 - Автодетект секретов во входящих сообщениях (11 типов)
 - md→html конвертация, splitMessage с закрытием HTML-тегов
+- Отправка медиа-маркеров: `new InputFile(createReadStream(path))` — grammY-синтаксис (не Telegraf `{ source: path }`)
 
 ### Фаза 2: Паритет с IIA
 - Персистентный стейт (state.json): сессии, расходы, режим
@@ -126,7 +128,7 @@ templates/
 - Мониторинг: RSS/GitHub/YouTube (все через публичные фиды, без API-ключей)
 - Саммари: Haiku (Anthropic API), GPT-4o-mini (OpenAI API) или Haiku через OpenRouter — через ключ пользователя
 - SERVICES.md — каталог сервисов в шаблонах (Deepgram, Voyage, GitHub, Railway, Vercel, Supabase, OpenRouter, Gemini)
-- Версионирование шаблонов v2: SOUL.md + CLAUDE.md + SERVICES.md автообновляются при git pull + restart
+- Версионирование шаблонов v4: SOUL.md + CLAUDE.md + SERVICES.md автообновляются при git pull + restart
 
 ---
 
@@ -200,7 +202,9 @@ templates/
 - [x] Выложить на GitHub — github.com/sergeigeyn/helper-aishnik
 - [x] Auto-update развёрнутых агентов — команда /update (SSH → git pull + restart)
 - [x] SSH-credentials сохраняются в store при деплое
-- [ ] Сделать systemd-сервис — scripts/install-service.sh готов, нужно запустить
+- [x] bootstrap.sh — деплой на чистый сервер одной командой curl
+- [x] install-service.sh исправлен (User=client, не root)
+- [ ] Запустить systemd на 188.166.90.33 — `sudo bash scripts/install-service.sh`
 - [ ] Fleet management интеграция с dashboard'ом
 - [ ] Дополнительные VPS-провайдеры (Hetzner, VDSina)
 
